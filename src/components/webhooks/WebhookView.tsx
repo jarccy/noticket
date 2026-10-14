@@ -20,6 +20,7 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import type { WebhookEvent, NotificationType } from '@/types'
+import { isTauri } from '@/lib/platform'
 
 export function WebhookView() {
   const {
@@ -71,7 +72,7 @@ export function WebhookView() {
     }
   }
 
-  const curlExample = `curl -X POST http://localhost:5173/api/webhook \\
+  const curlExample = `curl -X POST http://localhost:3690/webhook \\
   -H "Content-Type: application/json" \\
   -d '{
     "title": "Alerta de Servidor",
@@ -89,9 +90,9 @@ export function WebhookView() {
     source = "GitHub Actions"
 } | ConvertTo-Json
 
-Invoke-RestMethod -Uri "http://localhost:5173/api/webhook" -Method POST -ContentType "application/json" -Body $body`
+Invoke-RestMethod -Uri "http://localhost:3690/webhook" -Method POST -ContentType "application/json" -Body $body`
 
-  const jsExample = `fetch('http://localhost:5173/api/webhook', {
+  const jsExample = `fetch('http://localhost:3690/webhook', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -114,7 +115,7 @@ payload = {
     "source": "Stripe"
 }
 
-response = requests.post("http://localhost:5173/api/webhook", json=payload)
+response = requests.post("http://localhost:3690/webhook", json=payload)
 print(response.json())`
 
   const getSnippet = () => {
@@ -385,6 +386,8 @@ print(response.json())`
             <div className="space-y-2">
               <span className="text-xs font-semibold text-foreground uppercase tracking-wide">Endpoints Disponibles</span>
               <div className="space-y-2">
+                {/* Vite dev-server endpoint: only exists under `pnpm dev` in the browser */}
+                {!isTauri() && (
                 <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/30 font-mono text-xs">
                   <div className="flex items-center gap-2">
                     <span className="bg-success/10 text-success px-2 py-0.5 rounded font-bold">POST</span>
@@ -397,12 +400,13 @@ print(response.json())`
                     {copiedKey === 'ep1' ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
                   </button>
                 </div>
+                )}
 
                 <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/30 font-mono text-xs">
                   <div className="flex items-center gap-2">
                     <span className="bg-success/10 text-success px-2 py-0.5 rounded font-bold">POST</span>
                     <span className="text-foreground">http://localhost:3690/webhook</span>
-                    <Badge variant="outline" className="text-[10px] text-primary">Dedicado</Badge>
+                    <Badge variant="outline" className="text-[10px] text-primary">Recomendado</Badge>
                   </div>
                   <button
                     onClick={() => copyToClipboard('ep2', 'http://localhost:3690/webhook')}

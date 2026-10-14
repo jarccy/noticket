@@ -5,6 +5,9 @@ import { Storage } from '@/services/storage'
 import { dispatchDesktopNotification, requestNotificationPermission } from '@/services/notifications'
 import { soundManager } from '@/services/sound'
 import { applyAccent } from '@/lib/accent'
+import { isTauri } from '@/lib/platform'
+import { invoke } from '@tauri-apps/api/core'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 interface AppContextType {
   events: WebhookEvent[]
@@ -81,11 +84,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // Add to events
       setEvents((prev) => [event, ...prev.filter((e) => e.id !== event.id)])
 
-      // Add to toast queue
-      setToastQueue((prev) => [event, ...prev.slice(0, 3)])
-      setTimeout(() => {
-        dismissToast(event.id)
-      }, 6000)
+      // Installed app: the app's own popup window (shows above other apps,
+      // plays the sound itself). Browser / popup disabled: in-app toast.
+      const usePopup = isTauri() && settings.desktopNotificationsEnabled
+      if (usePopup) {
+        invoke('show_notification', { event }).catch((err) => console.error('Popup failed', err))
+      } else {
+        setToastQueue((prev) => [event, ...prev.slice(0, 3)])
+        setTimeout(() => {
+          dismissToast(event.id)
+        }, 6000)
+      }
 
       // Confetti for success
       if (event.type === 'success') {
@@ -101,7 +110,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Desktop notification & sound
-      if (settings.desktopNotificationsEnabled) {
+      if (usePopup) {
+        // handled by the popup window
+      } else if (settings.desktopNotificationsEnabled) {
         dispatchDesktopNotification(event.title, event.message, event.type)
       } else if (settings.soundEnabled) {
         soundManager.play(event.type)
@@ -127,8 +138,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [settings, dismissToast]
   )
 
-  // Listen to SSE `/api/events` from Vite backend
+  // Installed app: webhooks arrive from the embedded Rust server as Tauri events
   useEffect(() => {
+    if (!isTauri()) return
+    let cancelled = false
+    const unlisteners: Promise<UnlistenFn>[] = [
+      listen<WebhookEvent>('webhook', (e) => handleIncomingEvent(e.payload)),
+      listen<boolean>('gateway-status', (e) => setIsGatewayOnline(e.payload)),
+      listen<string>('navigate', (e) => setActiveTab(e.payload as AppContextType['activeTab'])),
+    ]
+    invoke<boolean>('gateway_online').then((online) => {
+      if (!cancelled) setIsGatewayOnline(online)
+    })
+    return () => {
+      cancelled = true
+      unlisteners.forEach((p) => p.then((off) => off()))
+    }
+  }, [handleIncomingEvent])
+
+  // Browser dev: listen to SSE `/api/events` from Vite backend
+  useEffect(() => {
+    if (isTauri()) return
     let eventSource: EventSource | null = null
     let retryTimeout: ReturnType<typeof setTimeout>
 
@@ -175,7 +205,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addWebhookEvent = useCallback(
     async (raw: Record<string, unknown>) => {
-      // Can be posted to local endpoint directly or added locally
+      // Installed app: same parser + event path as real webhooks
+      if (isTauri()) {
+        await invoke('ingest_webhook', { payload: raw })
+        return
+      }
+      // Browser dev: post to the Vite endpoint, fall back to a local event
       try {
         const res = await fetch('/api/webhook', {
           method: 'POST',
@@ -237,6 +272,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const triggerNotificationTest = useCallback(async () => {
+    if (isTauri()) {
+      const testEvent: WebhookEvent = {
+        id: 'test_' + Date.now().toString(36),
+        title: 'Prueba de notificación',
+        message: 'Así se verán los webhooks entrantes. Haz clic para abrir la app.',
+        type: 'success',
+        source: 'PulseDesk',
+        timestamp: new Date().toISOString(),
+        read: true,
+        rawPayload: {},
+      }
+      await invoke('show_notification', { event: testEvent })
+      return
+    }
     const granted = await requestNotificationPermission()
     dispatchDesktopNotification(
       'Prueba de Notificación PulseDesk',

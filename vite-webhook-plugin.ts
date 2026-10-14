@@ -183,7 +183,9 @@ export function webhookServerPlugin(): Plugin {
         next()
       })
 
-      // 2. Also start dedicated Webhook HTTP server on port 3690 for external webhooks
+      // 2. Also start dedicated Webhook HTTP server on port 3690 for external webhooks.
+      //    Under `tauri dev` the Rust side owns 3690 (src-tauri/src/webhook.rs).
+      if (process.env.TAURI_ENV_PLATFORM) return
       try {
         const dedicatedServer = http.createServer((req, res) => {
           res.setHeader('Access-Control-Allow-Origin', '*')

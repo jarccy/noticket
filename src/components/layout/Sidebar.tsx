@@ -10,12 +10,13 @@ import {
 } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
 import { Badge } from '@/components/ui/badge'
+import { WEBHOOK_ENDPOINT } from '@/lib/platform'
 
 export function Sidebar() {
-  const { activeTab, setActiveTab, events, calendarEvents, unreadCount } = useApp()
+  const { activeTab, setActiveTab, events, calendarEvents, unreadCount, isGatewayOnline } = useApp()
   const [copied, setCopied] = useState(false)
 
-  const webhookEndpoint = 'http://localhost:5173/api/webhook'
+  const webhookEndpoint = WEBHOOK_ENDPOINT
 
   const copyEndpoint = () => {
     navigator.clipboard.writeText(webhookEndpoint)
@@ -100,8 +101,8 @@ export function Sidebar() {
               <Terminal className="h-3.5 w-3.5 text-primary" />
               Webhook Listener
             </span>
-            <Badge variant="success" className="text-[10px] px-1.5 py-0">
-              Online
+            <Badge variant={isGatewayOnline ? 'success' : 'warning'} className="text-[10px] px-1.5 py-0">
+              {isGatewayOnline ? 'Online' : 'Offline'}
             </Badge>
           </div>
           <p className="text-[11px] text-muted-foreground leading-tight">

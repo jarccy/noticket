@@ -40,7 +40,7 @@ export function Header() {
                 )}
                 <span className={`relative inline-block h-2 w-2 rounded-full ${isGatewayOnline ? 'bg-success' : 'bg-warning'}`} />
               </span>
-              {isGatewayOnline ? 'Gateway Webhook Activo (Puertos 5173 & 3690)' : 'Modo Local / Conectando Gateway'}
+              {isGatewayOnline ? 'Gateway activo en puerto 3690' : 'Gateway desconectado (puerto 3690 ocupado o iniciando)'}
             </p>
           </div>
         </div>

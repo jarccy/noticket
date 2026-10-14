@@ -192,7 +192,7 @@ export function SettingsView() {
             </div>
             <div className="p-3 rounded-lg border border-border/80 bg-card/60">
               <span className="text-muted-foreground block text-[11px]">Puertos de Escucha:</span>
-              <span className="text-primary font-semibold">5173 (/api/webhook) & 3690 (/webhook)</span>
+              <span className="text-primary font-semibold">3690 (/webhook)</span>
             </div>
             <div className="p-3 rounded-lg border border-border/80 bg-card/60">
               <span className="text-muted-foreground block text-[11px]">Seguridad & Integridad:</span>
