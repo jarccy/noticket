@@ -1,0 +1,230 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────────
+   Tailwind v4 — Dark mode via .dark class
+   ───────────────────────────────────────────────── */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ─────────────────────────────────────────────────
+   Design Tokens — Light Theme (default)
+   ───────────────────────────────────────────────── */
+@theme {
+  /* Neutral base (zinc). Primary is monochrome by default:
+     near-black on light, near-white on dark. The user-chosen
+     accent overrides it via [data-accent] below. */
+  --color-background: hsl(0 0% 98%);
+  --color-foreground: hsl(240 10% 3.9%);
+
+  /* Card */
+  --color-card: hsl(0 0% 100%);
+  --color-card-foreground: hsl(240 10% 3.9%);
+
+  /* Popover */
+  --color-popover: hsl(0 0% 100%);
+  --color-popover-foreground: hsl(240 10% 3.9%);
+
+  /* Primary */
+  --color-primary: hsl(240 5.9% 10%);
+  --color-primary-foreground: hsl(0 0% 98%);
+
+  /* Secondary */
+  --color-secondary: hsl(240 4.8% 95.9%);
+  --color-secondary-foreground: hsl(240 5.9% 10%);
+
+  /* Muted */
+  --color-muted: hsl(240 4.8% 95.9%);
+  --color-muted-foreground: hsl(240 3.8% 42%);
+
+  /* Accent (hover surfaces, not the brand color) */
+  --color-accent: hsl(240 4.8% 94%);
+  --color-accent-foreground: hsl(240 5.9% 10%);
+
+  /* Status */
+  --color-destructive: hsl(0 72% 45%);
+  --color-destructive-foreground: hsl(0 0% 98%);
+  --color-success: hsl(152 65% 30%);
+  --color-warning: hsl(30 90% 38%);
+
+  /* Border / Input / Ring */
+  --color-border: hsl(240 5.9% 90%);
+  --color-input: hsl(240 5.9% 88%);
+  --color-ring: hsl(240 5.9% 10%);
+
+  /* Code blocks */
+  --color-code: hsl(240 5% 96%);
+  --color-code-foreground: hsl(240 6% 18%);
+
+  /* Sidebar */
+  --color-sidebar: hsl(0 0% 97%);
+  --color-sidebar-foreground: hsl(240 5.9% 10%);
+  --color-sidebar-primary: hsl(240 5.9% 10%);
+  --color-sidebar-primary-foreground: hsl(0 0% 98%);
+  --color-sidebar-accent: hsl(240 4.8% 92%);
+  --color-sidebar-accent-foreground: hsl(240 5.9% 10%);
+  --color-sidebar-border: hsl(240 5.9% 90%);
+  --color-sidebar-ring: hsl(240 5.9% 10%);
+
+  /* Border Radius */
+  --radius: 0.75rem;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* Fonts */
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Custom Animations */
+  --animate-pulse-subtle: pulse-subtle 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-ping-slow: ping-slow 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+  --animate-fade-in: fade-in 0.25s ease-out forwards;
+  --animate-slide-down: slide-down 0.3s ease-out forwards;
+
+  @keyframes pulse-subtle {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.85; transform: scale(1.02); }
+  }
+  @keyframes ping-slow {
+    75%, 100% { transform: scale(1.7); opacity: 0; }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes slide-down {
+    from { opacity: 0; transform: translateY(-12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+
+/* ─────────────────────────────────────────────────
+   Dark Theme Overrides
+   ───────────────────────────────────────────────── */
+.dark {
+  color-scheme: dark;
+  --color-background: hsl(240 10% 3.9%);
+  --color-foreground: hsl(0 0% 96%);
+  --color-card: hsl(240 6% 7%);
+  --color-card-foreground: hsl(0 0% 96%);
+  --color-popover: hsl(240 6% 8%);
+  --color-popover-foreground: hsl(0 0% 96%);
+  --color-primary: hsl(0 0% 96%);
+  --color-primary-foreground: hsl(240 5.9% 10%);
+  --color-secondary: hsl(240 3.7% 14%);
+  --color-secondary-foreground: hsl(0 0% 96%);
+  --color-muted: hsl(240 3.7% 13%);
+  --color-muted-foreground: hsl(240 5% 65%);
+  --color-accent: hsl(240 3.7% 15%);
+  --color-accent-foreground: hsl(0 0% 96%);
+  --color-destructive: hsl(0 72% 50%);
+  --color-destructive-foreground: hsl(0 0% 98%);
+  --color-success: hsl(152 55% 52%);
+  --color-warning: hsl(38 92% 58%);
+  --color-border: hsl(240 3.7% 16%);
+  --color-input: hsl(240 3.7% 20%);
+  --color-ring: hsl(0 0% 83%);
+  --color-code: hsl(240 6% 5%);
+  --color-code-foreground: hsl(240 5% 84%);
+  --color-sidebar: hsl(240 8% 5%);
+  --color-sidebar-foreground: hsl(0 0% 96%);
+  --color-sidebar-primary: hsl(0 0% 96%);
+  --color-sidebar-primary-foreground: hsl(240 5.9% 10%);
+  --color-sidebar-accent: hsl(240 3.7% 13%);
+  --color-sidebar-accent-foreground: hsl(0 0% 96%);
+  --color-sidebar-border: hsl(240 3.7% 13%);
+  --color-sidebar-ring: hsl(0 0% 83%);
+}
+
+/* ─────────────────────────────────────────────────
+   User-chosen accent. AppContext sets data-accent on
+   <html> plus the four --accent-* variables (one pair
+   per theme so contrast holds in both modes).
+   ───────────────────────────────────────────────── */
+:root[data-accent] {
+  --color-primary: var(--accent-light);
+  --color-primary-foreground: var(--accent-light-fg);
+  --color-ring: var(--accent-light);
+  --color-sidebar-primary: var(--accent-light);
+  --color-sidebar-primary-foreground: var(--accent-light-fg);
+  --color-sidebar-ring: var(--accent-light);
+}
+
+:root.dark[data-accent] {
+  --color-primary: var(--accent-dark);
+  --color-primary-foreground: var(--accent-dark-fg);
+  --color-ring: var(--accent-dark);
+  --color-sidebar-primary: var(--accent-dark);
+  --color-sidebar-primary-foreground: var(--accent-dark-fg);
+  --color-sidebar-ring: var(--accent-dark);
+}
+
+/* ─────────────────────────────────────────────────
+   Base Styles
+   ───────────────────────────────────────────────── */
+@layer base {
+  * {
+    border-color: var(--color-border);
+    outline-color: color-mix(in oklch, var(--color-ring), transparent 50%);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background-color: color-mix(in oklch, var(--color-primary), transparent 80%);
+    color: var(--color-primary);
+  }
+}
+
+/* ─────────────────────────────────────────────────
+   Custom Scrollbars
+   ───────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--color-muted-foreground), transparent 75%);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--color-muted-foreground), transparent 60%);
+}
+
+/* ─────────────────────────────────────────────────
+   Utility Classes
+   ───────────────────────────────────────────────── */
+@layer utilities {
+  .glass-panel {
+    background-color: color-mix(in oklch, var(--color-card), transparent 25%);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid color-mix(in oklch, var(--color-border), transparent 20%);
+  }
+
+  .glass-dropdown {
+    background-color: color-mix(in oklch, var(--color-popover), transparent 12%);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid color-mix(in oklch, var(--color-border), transparent 10%);
+  }
+
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
