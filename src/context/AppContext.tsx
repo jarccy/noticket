@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import confetti from 'canvas-confetti'
 import type { WebhookEvent, CalendarEvent, AppSettings } from '@/types'
 import { Storage } from '@/services/storage'
+import { Api, API_URL } from '@/services/api'
 import { dispatchDesktopNotification, requestNotificationPermission } from '@/services/notifications'
 import { soundManager } from '@/services/sound'
 import { applyAccent } from '@/lib/accent'
@@ -61,6 +62,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     applyAccent(settings.accentColor)
   }, [settings.accentColor])
 
+  // Load persisted data from the Go backend (PostgreSQL). localStorage stays as offline cache.
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([Api.getEvents(), Api.getCalendarEvents(), Api.getSettings()])
+      .then(([dbEvents, dbCalendar, dbSettings]) => {
+        if (cancelled) return
+        setEvents(dbEvents)
+        setCalendarEvents(dbCalendar)
+        setSettings((prev) => ({ ...prev, ...dbSettings }))
+      })
+      .catch((err) => console.warn('[api] backend no disponible, usando localStorage', err))
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   // Save to storage
   useEffect(() => {
     Storage.saveEvents(events)
@@ -83,6 +100,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     (event: WebhookEvent) => {
       // Add to events
       setEvents((prev) => [event, ...prev.filter((e) => e.id !== event.id)])
+      Api.saveEvent(event)
 
       // Installed app: the app's own popup window (shows above other apps,
       // plays the sound itself). Browser / popup disabled: in-app toast.
@@ -133,6 +151,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           webhookId: event.id,
         }
         setCalendarEvents((prev) => [newCalEvent, ...prev.filter((c) => c.webhookId !== event.id)])
+        Api.saveCalendarEvent(newCalEvent)
       }
     },
     [settings, dismissToast]
@@ -156,7 +175,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [handleIncomingEvent])
 
-  // Browser dev: listen to SSE `/api/events` from Vite backend
+  // Browser: listen to SSE `/api/events` from the Go backend (notiback)
   useEffect(() => {
     if (isTauri()) return
     let eventSource: EventSource | null = null
@@ -164,7 +183,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     const connectSSE = () => {
       try {
-        eventSource = new EventSource('/api/events')
+        eventSource = new EventSource(API_URL + '/api/events')
 
         eventSource.onopen = () => {
           setIsGatewayOnline(true)
@@ -210,11 +229,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         await invoke('ingest_webhook', { payload: raw })
         return
       }
-      // Browser dev: post to the Vite endpoint, fall back to a local event
+      // Browser: post to the Go backend (it persists + broadcasts via SSE), fall back to a local event
       try {
-        const res = await fetch('/api/webhook', {
+        const res = await fetch(API_URL + '/webhook', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(settings.webhookSecret && { 'x-webhook-secret': settings.webhookSecret }),
+          },
           body: JSON.stringify(raw),
         })
         if (!res.ok) {
@@ -240,19 +262,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         handleIncomingEvent(event)
       }
     },
-    [handleIncomingEvent]
+    [handleIncomingEvent, settings.webhookSecret]
   )
 
   const markAsRead = useCallback((id: string) => {
     setEvents((prev) => prev.map((e) => (e.id === id ? { ...e, read: true } : e)))
+    Api.markAsRead(id)
   }, [])
 
   const markAllAsRead = useCallback(() => {
     setEvents((prev) => prev.map((e) => ({ ...e, read: true })))
+    Api.markAllAsRead()
   }, [])
 
   const clearEvents = useCallback(() => {
     setEvents([])
+    Api.clearEvents()
   }, [])
 
   const addCalendarEvent = useCallback((event: Omit<CalendarEvent, 'id'>) => {
@@ -261,14 +286,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       id: 'cal_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 5),
     }
     setCalendarEvents((prev) => [newEvent, ...prev])
+    Api.saveCalendarEvent(newEvent)
   }, [])
 
   const deleteCalendarEvent = useCallback((id: string) => {
     setCalendarEvents((prev) => prev.filter((c) => c.id !== id))
+    Api.deleteCalendarEvent(id)
   }, [])
 
   const updateSettings = useCallback((newSettings: Partial<AppSettings>) => {
     setSettings((prev) => ({ ...prev, ...newSettings }))
+    Api.saveSettings(newSettings)
   }, [])
 
   const triggerNotificationTest = useCallback(async () => {
