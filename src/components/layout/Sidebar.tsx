@@ -6,130 +6,212 @@ import {
   Settings,
   Copy,
   Check,
-  Terminal,
+  Radio,
+  Send,
+  BellRing,
+  Sun,
+  Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
+  type LucideIcon,
 } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
-import { Badge } from '@/components/ui/badge'
 import { WEBHOOK_ENDPOINT } from '@/lib/platform'
+import { cn } from '@/lib/utils'
+
+type Tab = ReturnType<typeof useApp>['activeTab']
+
+const COLLAPSE_KEY = 'noticket_sidebar_collapsed'
+
+function readCollapsed(): boolean {
+  try {
+    return localStorage.getItem(COLLAPSE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function IconAction({
+  label,
+  onClick,
+  children,
+}: {
+  label: string
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground active:scale-95"
+    >
+      {children}
+    </button>
+  )
+}
 
 export function Sidebar() {
-  const { activeTab, setActiveTab, events, calendarEvents, unreadCount, isGatewayOnline } = useApp()
+  const {
+    activeTab,
+    setActiveTab,
+    calendarEvents,
+    events,
+    unreadCount,
+    isGatewayOnline,
+    settings,
+    updateSettings,
+    setOpenSimulator,
+    triggerNotificationTest,
+  } = useApp()
+  const [collapsed, setCollapsed] = useState(readCollapsed)
   const [copied, setCopied] = useState(false)
 
-  const webhookEndpoint = WEBHOOK_ENDPOINT
-
-  const copyEndpoint = () => {
-    navigator.clipboard.writeText(webhookEndpoint)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+  const toggleCollapsed = () => {
+    setCollapsed((c) => {
+      try {
+        localStorage.setItem(COLLAPSE_KEY, c ? '0' : '1')
+      } catch {
+        // ignore
+      }
+      return !c
+    })
   }
 
-  const navItems = [
-    {
-      id: 'dashboard',
-      label: 'Dashboard',
-      icon: LayoutDashboard,
-      badge: null,
-    },
-    {
-      id: 'calendar',
-      label: 'Calendario',
-      icon: CalendarDays,
-      badge: calendarEvents.length > 0 ? calendarEvents.length : null,
-      badgeColor: 'bg-muted text-muted-foreground',
-    },
+  const copyEndpoint = () => {
+    navigator.clipboard.writeText(WEBHOOK_ENDPOINT)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1800)
+  }
+
+  const nav: { id: Tab; label: string; icon: LucideIcon; count?: number; highlight?: boolean }[] = [
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'calendar', label: 'Calendario', icon: CalendarDays, count: calendarEvents.length || undefined },
     {
       id: 'webhooks',
       label: 'Webhooks & Logs',
       icon: Webhook,
-      badge: unreadCount > 0 ? unreadCount : events.length,
-      badgeColor: unreadCount > 0 ? 'bg-primary text-primary-foreground font-bold' : 'bg-muted text-muted-foreground',
+      count: unreadCount || events.length || undefined,
+      highlight: unreadCount > 0,
     },
-    {
-      id: 'settings',
-      label: 'Configuración',
-      icon: Settings,
-      badge: null,
-    },
-  ] as const
+    { id: 'settings', label: 'Configuración', icon: Settings },
+  ]
 
   return (
-    <aside className="w-64 shrink-0 border-r border-sidebar-border bg-sidebar flex flex-col justify-between p-4 h-[calc(100vh-4rem)]">
-      {/* Navigation Links */}
-      <div className="space-y-6">
-        <div>
-          <p className="px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 mb-2">
-            Módulos Principales
-          </p>
-          <nav className="space-y-1">
-            {navItems.map((item) => {
-              const Icon = item.icon
-              const isActive = activeTab === item.id
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveTab(item.id)}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 text-left ${
-                    isActive
-                      ? 'bg-sidebar-primary text-sidebar-primary-foreground font-semibold'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-sidebar-accent'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <Icon className={`h-4 w-4 ${isActive ? 'text-primary-foreground' : 'text-muted-foreground'}`} />
-                    <span>{item.label}</span>
-                  </div>
-                  {item.badge !== null && (
-                    <span
-                      className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${
-                        isActive ? 'bg-sidebar-primary-foreground/15 text-sidebar-primary-foreground' : item.badgeColor
-                      }`}
-                    >
-                      {item.badge}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
-          </nav>
+    <aside
+      className={cn(
+        'flex h-dvh shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200 ease-out',
+        collapsed ? 'w-[68px]' : 'w-60'
+      )}
+    >
+      {/* Brand + gateway status */}
+      <div className={cn('flex h-16 items-center gap-3 px-4', collapsed && 'justify-center px-0')}>
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+          <Radio className="h-[18px] w-[18px]" />
         </div>
-
-        {/* Quick Webhook Info Card */}
-        <div className="rounded-xl border border-sidebar-border bg-card p-3.5 space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-              <Terminal className="h-3.5 w-3.5 text-primary" />
-              Webhook Listener
-            </span>
-            <Badge variant={isGatewayOnline ? 'success' : 'warning'} className="text-[10px] px-1.5 py-0">
-              {isGatewayOnline ? 'Online' : 'Offline'}
-            </Badge>
+        {!collapsed && (
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold tracking-tight text-foreground">PulseDesk</p>
+            <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <span className={cn('h-1.5 w-1.5 rounded-full', isGatewayOnline ? 'bg-success' : 'bg-warning')} />
+              {isGatewayOnline ? 'Escuchando en :3690' : 'Gateway desconectado'}
+            </p>
           </div>
-          <p className="text-[11px] text-muted-foreground leading-tight">
-            Escuchando peticiones HTTP POST de payloads JSON.
-          </p>
-          <div className="flex items-center gap-1 rounded-lg bg-background/80 border border-border/80 px-2 py-1.5 text-[11px] font-mono text-muted-foreground overflow-hidden">
-            <span className="truncate flex-1 select-all">{webhookEndpoint}</span>
-            <button
-              onClick={copyEndpoint}
-              className="hover:text-foreground transition-colors p-1"
-              title="Copiar endpoint"
-            >
-              {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
-            </button>
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* Footer Info */}
-      <div className="pt-4 border-t border-border/70 space-y-2">
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>Versión</span>
-          <span className="font-mono text-[11px]">v1.0.0-tauri</span>
+      {/* Navigation */}
+      <nav className="flex flex-col gap-0.5 px-3 pt-2" aria-label="Principal">
+        {nav.map((item) => {
+          const Icon = item.icon
+          const active = activeTab === item.id
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setActiveTab(item.id)}
+              title={collapsed ? item.label : undefined}
+              aria-current={active ? 'page' : undefined}
+              className={cn(
+                'relative flex h-9 items-center gap-3 rounded-lg px-3 text-sm transition-colors',
+                collapsed && 'justify-center px-0',
+                active
+                  ? 'bg-sidebar-accent font-medium text-foreground'
+                  : 'text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground'
+              )}
+            >
+              {active && <span className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-primary" aria-hidden />}
+              <Icon className="h-4 w-4 shrink-0" />
+              {!collapsed && <span className="flex-1 truncate text-left">{item.label}</span>}
+              {!collapsed && item.count !== undefined && (
+                <span
+                  className={cn(
+                    'min-w-5 rounded-full px-1.5 text-center text-[11px] font-medium tabular-nums leading-5',
+                    item.highlight ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
+                  )}
+                >
+                  {item.count > 99 ? '99+' : item.count}
+                </span>
+              )}
+              {collapsed && item.highlight && (
+                <span className="absolute right-3 top-2 h-2 w-2 rounded-full bg-primary ring-2 ring-sidebar" aria-hidden />
+              )}
+            </button>
+          )
+        })}
+      </nav>
+
+      {/* Endpoint */}
+      {!collapsed && (
+        <div className="mx-3 mt-6 space-y-1.5">
+          <p className="px-1 text-[11px] font-medium text-muted-foreground">Endpoint</p>
+          <button
+            type="button"
+            onClick={copyEndpoint}
+            title="Copiar endpoint"
+            className="group flex w-full items-center gap-2 rounded-lg border border-sidebar-border bg-card px-2.5 py-2 text-left font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <span className="flex-1 truncate">{WEBHOOK_ENDPOINT.replace('http://', '')}</span>
+            {copied ? (
+              <Check className="h-3.5 w-3.5 shrink-0 text-success" />
+            ) : (
+              <Copy className="h-3.5 w-3.5 shrink-0 opacity-60 group-hover:opacity-100" />
+            )}
+          </button>
         </div>
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>Puerto Secundario</span>
-          <span className="font-mono text-[11px] text-foreground">3690</span>
+      )}
+
+      <div className="flex-1" />
+
+      {/* Actions */}
+      <div className={cn('space-y-2 border-t border-sidebar-border p-3', collapsed && 'flex flex-col items-center')}>
+        <button
+          type="button"
+          onClick={() => setOpenSimulator(true)}
+          title="Enviar webhook"
+          className={cn(
+            'flex h-9 items-center justify-center gap-2 rounded-lg bg-primary text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:scale-[0.98]',
+            collapsed ? 'w-9' : 'w-full'
+          )}
+        >
+          <Send className="h-4 w-4" />
+          {!collapsed && 'Enviar webhook'}
+        </button>
+        <div className={cn('flex items-center', collapsed ? 'flex-col gap-1' : 'justify-between')}>
+          <IconAction label="Probar notificación" onClick={triggerNotificationTest}>
+            <BellRing className="h-4 w-4" />
+          </IconAction>
+          <IconAction
+            label={settings.theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}
+            onClick={() => updateSettings({ theme: settings.theme === 'dark' ? 'light' : 'dark' })}
+          >
+            {settings.theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </IconAction>
+          <IconAction label={collapsed ? 'Expandir menú' : 'Contraer menú'} onClick={toggleCollapsed}>
+            {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+          </IconAction>
         </div>
       </div>
     </aside>

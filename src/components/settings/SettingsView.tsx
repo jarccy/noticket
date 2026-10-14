@@ -1,5 +1,5 @@
+import { PageHeader } from '@/components/ui/page-header'
 import {
-  Settings,
   Bell,
   Volume2,
   Calendar,
@@ -20,17 +20,11 @@ export function SettingsView() {
   const { settings, updateSettings, triggerNotificationTest } = useApp()
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-          <Settings className="h-6 w-6 text-primary" />
-          Configuración del Sistema
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Personaliza el comportamiento del receptor de webhooks, alertas de audio, visualización y sincronización.
-        </p>
-      </div>
+    <div className="space-y-6 max-w-3xl">
+      <PageHeader
+        title="Configuración"
+        description="Notificaciones, sonido, sincronización con el calendario y apariencia."
+      />
 
       <div className="grid gap-6">
         {/* Notificaciones & Audio */}

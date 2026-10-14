@@ -1,5 +1,4 @@
 import { useApp, AppProvider } from '@/context/AppContext'
-import { Header } from '@/components/layout/Header'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { DashboardView } from '@/components/dashboard/DashboardView'
 import { CalendarView } from '@/components/calendar/CalendarView'
@@ -12,8 +11,8 @@ function MainContent() {
   const { activeTab } = useApp()
 
   return (
-    <main className="flex-1 overflow-y-auto p-6 md:p-8 bg-background/50 h-[calc(100vh-4rem)]">
-      <div className="max-w-7xl mx-auto">
+    <main className="h-dvh flex-1 overflow-y-auto">
+      <div key={activeTab} className="mx-auto max-w-6xl animate-fade-in px-6 py-8 md:px-10">
         {activeTab === 'dashboard' && <DashboardView />}
         {activeTab === 'calendar' && <CalendarView />}
         {activeTab === 'webhooks' && <WebhookView />}
@@ -26,12 +25,9 @@ function MainContent() {
 export default function App() {
   return (
     <AppProvider>
-      <div className="min-h-screen bg-background text-foreground flex flex-col antialiased selection:bg-primary/20 selection:text-primary">
-        <Header />
-        <div className="flex flex-1 overflow-hidden">
-          <Sidebar />
-          <MainContent />
-        </div>
+      <div className="flex h-dvh overflow-hidden bg-background text-foreground antialiased">
+        <Sidebar />
+        <MainContent />
         <WebhookSimulatorModal />
         <ToastContainer />
       </div>

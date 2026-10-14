@@ -29,6 +29,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { PageHeader } from '@/components/ui/page-header'
 import type { CalendarEvent, NotificationType } from '@/types'
 
 export function CalendarView() {
@@ -101,19 +102,11 @@ export function CalendarView() {
 
   return (
     <div className="space-y-6">
-      {/* Header bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <CalendarIcon className="h-6 w-6 text-primary" />
-            Calendario de Eventos & Webhooks
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Visualiza eventos agendados, reuniones y tareas sincronizadas automáticamente mediante webhooks JSON.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
+      <PageHeader
+        title="Calendario"
+        description="Eventos agendados a mano o sincronizados desde webhooks con fecha."
+        actions={
+        <>
           <Button variant="outline" size="sm" onClick={handleToday}>
             Hoy
           </Button>
@@ -134,10 +127,11 @@ export function CalendarView() {
             className="gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground"
           >
             <Plus className="h-4 w-4" />
-            <span>Nuevo Evento</span>
+            <span>Nuevo evento</span>
           </Button>
-        </div>
-      </div>
+        </>
+        }
+      />
 
       {/* Main Grid: Calendar on Left, Selected Day Details on Right */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
