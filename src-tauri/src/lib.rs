@@ -1,3 +1,4 @@
+mod reminders;
 mod webhook;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -17,13 +18,49 @@ struct GatewayState {
   online: Arc<AtomicBool>,
 }
 
+/// Mirrors the "Notificaciones de escritorio" setting. Popups are pushed from Rust
+/// so they still appear while the main window is hidden in the tray (WebView2
+/// throttles/suspends a hidden window's JavaScript).
+static POPUPS_ENABLED: AtomicBool = AtomicBool::new(true);
+
+/// Show an event in the popup window. A hidden webview may be frozen, so the
+/// window is shown first; the popup then sizes itself via `layout_notifications`.
+pub(crate) fn push_notification<S: serde::Serialize + Clone>(app: &AppHandle, event: S) {
+  if let Some(win) = app.get_webview_window(NOTIFY_LABEL) {
+    if !win.is_visible().unwrap_or(false) {
+      let _ = win.show();
+    }
+  }
+  let _ = app.emit_to(NOTIFY_LABEL, "notify:push", event);
+}
+
+/// Every webhook (HTTP or in-app) ends here: the main window records it and,
+/// if enabled, the popup shows it right away from Rust.
+pub(crate) fn deliver_webhook(app: &AppHandle, event: &webhook::WebhookEvent) {
+  let _ = app.emit_to("main", "webhook", event);
+  if POPUPS_ENABLED.load(Ordering::Relaxed) {
+    push_notification(app, event);
+  }
+}
+
 /// Webhooks fired from inside the app (simulator, presets, replay) go through
 /// the same parser and event path as real HTTP webhooks.
 #[tauri::command]
 fn ingest_webhook(app: AppHandle, payload: Value) -> webhook::WebhookEvent {
   let event = webhook::parse_payload(payload);
-  let _ = app.emit("webhook", &event);
+  deliver_webhook(&app, &event);
   event
+}
+
+#[tauri::command]
+fn set_popups_enabled(enabled: bool) {
+  POPUPS_ENABLED.store(enabled, Ordering::Relaxed);
+}
+
+/// The frontend sends the pending calendar reminders whenever the calendar changes.
+#[tauri::command]
+fn set_reminders(state: State<reminders::SharedReminders>, reminders: Vec<reminders::Reminder>) {
+  state.replace(reminders);
 }
 
 #[tauri::command]
@@ -34,8 +71,8 @@ fn gateway_online(state: State<GatewayState>) -> bool {
 /// Hand an event to the popup window. The popup sizes itself and calls
 /// `layout_notifications`, which shows and positions it.
 #[tauri::command]
-fn show_notification(app: AppHandle, event: Value) -> Result<(), String> {
-  app.emit_to(NOTIFY_LABEL, "notify:push", event).map_err(|e| e.to_string())
+fn show_notification(app: AppHandle, event: Value) {
+  push_notification(&app, event);
 }
 
 /// Resize the popup to its content (logical px) and pin it to the bottom-right
@@ -116,6 +153,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   let online = Arc::new(AtomicBool::new(false));
+  let reminder_state: reminders::SharedReminders = Default::default();
 
   let mut builder = tauri::Builder::default();
   // Must be the first plugin: a second launch (e.g. from the Start menu while the app
@@ -128,10 +166,13 @@ pub fn run() {
 
   builder
     .manage(GatewayState { online: online.clone() })
+    .manage(reminder_state.clone())
     .invoke_handler(tauri::generate_handler![
       ingest_webhook,
       gateway_online,
       show_notification,
+      set_popups_enabled,
+      set_reminders,
       layout_notifications,
       open_main
     ])
@@ -171,6 +212,7 @@ pub fn run() {
       }
 
       webhook::start_server(app.handle().clone(), online.clone());
+      reminders::start(app.handle().clone(), reminder_state.clone());
       Ok(())
     })
     .run(tauri::generate_context!())

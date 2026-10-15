@@ -11,6 +11,7 @@ import {
   addMonths,
   subMonths,
   isToday,
+  parseISO,
 } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
@@ -20,6 +21,7 @@ import {
   Plus,
   Clock,
   Trash2,
+  Pencil,
   Tag,
   Radio,
 } from 'lucide-react'
@@ -32,15 +34,21 @@ import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
 import type { CalendarEvent, NotificationType } from '@/types'
 
+const CATEGORIES = ['Reunión', 'Despliegue', 'Mantenimiento', 'Alerta', 'Presentación', 'Recordatorio']
+
 export function CalendarView() {
-  const { calendarEvents, addCalendarEvent, deleteCalendarEvent } = useApp()
+  const { calendarEvents, addCalendarEvent, updateCalendarEvent, deleteCalendarEvent } = useApp()
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date())
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [showAddModal, setShowAddModal] = useState<boolean>(false)
+  // null = creando un evento nuevo; si no, id del evento que se edita
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   // Form state
   const [formTitle, setFormTitle] = useState('')
+  const [formDate, setFormDate] = useState(() => format(new Date(), 'yyyy-MM-dd'))
   const [formTime, setFormTime] = useState('10:00')
+  const [formAllDay, setFormAllDay] = useState(false)
   const [formCategory, setFormCategory] = useState('Reunión')
   const [formDescription, setFormDescription] = useState('')
   const [formType, setFormType] = useState<NotificationType>('calendar')
@@ -58,6 +66,11 @@ export function CalendarView() {
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd')
   const selectedDayEvents = calendarEvents.filter((event) => event.date === selectedDateStr)
 
+  const editingEvent = editingId ? calendarEvents.find((c) => c.id === editingId) : undefined
+  // Conserva categorías que llegaron por webhook y no están en la lista
+  const categories =
+    editingEvent && !CATEGORIES.includes(editingEvent.category) ? [...CATEGORIES, editingEvent.category] : CATEGORIES
+
   const handlePrevMonth = () => setCurrentMonth(subMonths(currentMonth, 1))
   const handleNextMonth = () => setCurrentMonth(addMonths(currentMonth, 1))
   const handleToday = () => {
@@ -66,23 +79,61 @@ export function CalendarView() {
     setSelectedDate(now)
   }
 
-  const handleCreateEvent = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!formTitle.trim()) return
+  const openCreate = (date: string = selectedDateStr) => {
+    setEditingId(null)
+    setFormTitle('')
+    setFormDate(date)
+    setFormTime('10:00')
+    setFormAllDay(false)
+    setFormCategory('Reunión')
+    setFormDescription('')
+    setFormType('calendar')
+    setShowAddModal(true)
+  }
 
-    addCalendarEvent({
+  const openEdit = (event: CalendarEvent) => {
+    setEditingId(event.id)
+    setFormTitle(event.title)
+    setFormDate(event.date)
+    setFormTime(event.time || '10:00')
+    setFormAllDay(!event.time)
+    setFormCategory(event.category)
+    setFormDescription(event.description ?? '')
+    setFormType(event.type)
+    setShowAddModal(true)
+  }
+
+  const closeModal = () => {
+    setShowAddModal(false)
+    setEditingId(null)
+  }
+
+  const handleSubmitEvent = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!formTitle.trim() || !formDate) return
+
+    const fields = {
       title: formTitle.trim(),
       description: formDescription.trim(),
-      date: selectedDateStr,
-      time: formTime,
+      date: formDate,
+      time: formAllDay ? undefined : formTime,
       category: formCategory,
       type: formType,
-      source: 'Creado Manualmente',
-    })
+    }
 
-    setFormTitle('')
-    setFormDescription('')
-    setShowAddModal(false)
+    if (editingId) {
+      updateCalendarEvent(editingId, fields)
+    } else {
+      addCalendarEvent({ ...fields, source: 'Creado Manualmente' })
+    }
+
+    // Si el evento cae en otro día, seguirlo en el calendario
+    if (formDate !== selectedDateStr) {
+      const d = parseISO(formDate)
+      setSelectedDate(d)
+      setCurrentMonth(d)
+    }
+    closeModal()
   }
 
   const getEventBadgeColor = (type: NotificationType) => {
@@ -123,7 +174,7 @@ export function CalendarView() {
           </div>
           <Button
             size="sm"
-            onClick={() => setShowAddModal(true)}
+            onClick={() => openCreate()}
             className="gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground"
           >
             <Plus className="h-4 w-4" />
@@ -159,6 +210,10 @@ export function CalendarView() {
                 <button
                   key={day.toISOString()}
                   onClick={() => setSelectedDate(day)}
+                  onDoubleClick={() => {
+                    setSelectedDate(day)
+                    openCreate(dayStr)
+                  }}
                   className={`min-h-[92px] p-2 rounded-xl text-left transition-all duration-150 flex flex-col justify-between border relative group ${
                     isSelected
                       ? 'border-primary ring-2 ring-primary/30 bg-primary/5 dark:bg-primary/10'
@@ -246,12 +301,7 @@ export function CalendarView() {
                     Puedes programar un evento manual o enviar un webhook con la propiedad{' '}
                     <code className="text-primary font-mono text-[11px]">&quot;date&quot;: &quot;{selectedDateStr}&quot;</code>.
                   </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowAddModal(true)}
-                    className="mt-3 gap-1.5"
-                  >
+                  <Button variant="outline" size="sm" onClick={() => openCreate()} className="mt-3 gap-1.5">
                     <Plus className="h-3.5 w-3.5" />
                     <span>Agregar Evento</span>
                   </Button>
@@ -260,7 +310,17 @@ export function CalendarView() {
                 selectedDayEvents.map((event: CalendarEvent) => (
                   <div
                     key={event.id}
-                    className="p-3.5 rounded-xl border border-border/80 bg-card/70 hover:border-primary/40 transition-all space-y-2 relative group"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openEdit(event)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        openEdit(event)
+                      }
+                    }}
+                    title="Clic para editar"
+                    className="p-3.5 rounded-xl border border-border/80 bg-card/70 hover:border-primary/40 transition-all space-y-2 relative group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="space-y-0.5">
@@ -282,13 +342,30 @@ export function CalendarView() {
                         <h4 className="text-sm font-semibold text-foreground pt-1">{event.title}</h4>
                       </div>
 
-                      <button
-                        onClick={() => deleteCalendarEvent(event.id)}
-                        className="text-muted-foreground/60 hover:text-destructive transition-colors p-1"
-                        title="Eliminar evento"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      <div className="flex shrink-0 items-center">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openEdit(event)
+                          }}
+                          className="text-muted-foreground/60 hover:text-foreground transition-colors p-1"
+                          title="Editar evento"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            deleteCalendarEvent(event.id)
+                          }}
+                          className="text-muted-foreground/60 hover:text-destructive transition-colors p-1"
+                          title="Eliminar evento"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
 
                     {event.description && (
@@ -309,12 +386,7 @@ export function CalendarView() {
           </div>
 
           <div className="p-4 border-t border-border/70 bg-muted/20 rounded-b-xl">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowAddModal(true)}
-              className="w-full gap-2 border-dashed"
-            >
+            <Button variant="outline" size="sm" onClick={() => openCreate()} className="w-full gap-2 border-dashed">
               <Plus className="h-4 w-4" />
               <span>Programar Evento para este Día</span>
             </Button>
@@ -322,20 +394,24 @@ export function CalendarView() {
         </Card>
       </div>
 
-      {/* Modal: Add Event */}
-      <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
-        <DialogContent onClose={() => setShowAddModal(false)}>
+      {/* Modal: crear / editar evento */}
+      <Dialog open={showAddModal} onOpenChange={(open) => (open ? setShowAddModal(true) : closeModal())}>
+        <DialogContent onClose={closeModal}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CalendarIcon className="h-5 w-5 text-primary" />
-              Nuevo Evento de Calendario
+              {editingId ? <Pencil className="h-5 w-5 text-primary" /> : <CalendarIcon className="h-5 w-5 text-primary" />}
+              {editingId ? 'Editar evento' : 'Nuevo evento'}
             </DialogTitle>
             <DialogDescription>
-              Programar un evento para el día {format(selectedDate, "d 'de' MMMM yyyy", { locale: es })}.
+              {!editingId
+                ? 'Programa un evento manual en el calendario.'
+                : editingEvent?.webhookId
+                ? 'Este evento llegó por webhook. Si se re-envía ese mismo webhook, se sobrescribirán tus cambios.'
+                : 'Modifica los datos del evento.'}
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleCreateEvent} className="space-y-4 pt-2">
+          <form onSubmit={handleSubmitEvent} className="space-y-4 pt-2">
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-foreground">Título del Evento *</label>
               <Input
@@ -350,32 +426,50 @@ export function CalendarView() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-foreground flex items-center gap-1">
-                  <Clock className="h-3 w-3" /> Hora
+                  <CalendarIcon className="h-3 w-3" /> Fecha *
                 </label>
+                <Input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} required />
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-foreground flex items-center gap-1">
+                    <Clock className="h-3 w-3" /> Hora
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={formAllDay}
+                      onChange={(e) => setFormAllDay(e.target.checked)}
+                      className="h-3 w-3 accent-primary"
+                    />
+                    Todo el día
+                  </label>
+                </div>
                 <Input
                   type="time"
                   value={formTime}
                   onChange={(e) => setFormTime(e.target.value)}
+                  disabled={formAllDay}
                 />
               </div>
+            </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-foreground flex items-center gap-1">
-                  <Tag className="h-3 w-3" /> Categoría
-                </label>
-                <select
-                  value={formCategory}
-                  onChange={(e) => setFormCategory(e.target.value)}
-                  className="flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                >
-                  <option value="Reunión">Reunión</option>
-                  <option value="Despliegue">Despliegue</option>
-                  <option value="Mantenimiento">Mantenimiento</option>
-                  <option value="Alerta">Alerta</option>
-                  <option value="Presentación">Presentación</option>
-                  <option value="Recordatorio">Recordatorio</option>
-                </select>
-              </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground flex items-center gap-1">
+                <Tag className="h-3 w-3" /> Categoría
+              </label>
+              <select
+                value={formCategory}
+                onChange={(e) => setFormCategory(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                {categories.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="space-y-1.5">
@@ -414,13 +508,31 @@ export function CalendarView() {
               />
             </div>
 
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setShowAddModal(false)}>
-                Cancelar
-              </Button>
-              <Button type="submit" className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                Guardar Evento
-              </Button>
+            <DialogFooter className="sm:justify-between">
+              {editingId ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    deleteCalendarEvent(editingId)
+                    closeModal()
+                  }}
+                  className="gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Eliminar
+                </Button>
+              ) : (
+                <span />
+              )}
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" onClick={closeModal}>
+                  Cancelar
+                </Button>
+                <Button type="submit" className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                  {editingId ? 'Guardar cambios' : 'Crear evento'}
+                </Button>
+              </div>
             </DialogFooter>
           </form>
         </DialogContent>

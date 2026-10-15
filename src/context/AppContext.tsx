@@ -8,6 +8,14 @@ import { soundManager } from '@/services/sound'
 import { applyAccent } from '@/lib/accent'
 import { isTauri } from '@/lib/platform'
 import { parseWebhookLocally } from '@/lib/webhook-parser'
+import {
+  REMINDER_INTERVAL_MS,
+  markReminded,
+  markRemindedIfPast,
+  pendingReminders,
+  reminderNotification,
+  takeDueReminders,
+} from '@/lib/reminders'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
@@ -23,6 +31,7 @@ interface AppContextType {
   markAllAsRead: () => void
   clearEvents: () => void
   addCalendarEvent: (event: Omit<CalendarEvent, 'id'>) => void
+  updateCalendarEvent: (id: string, changes: Partial<Omit<CalendarEvent, 'id'>>) => void
   deleteCalendarEvent: (id: string) => void
   updateSettings: (newSettings: Partial<AppSettings>) => void
   isGatewayOnline: boolean
@@ -113,6 +122,30 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
     setToastQueue((prev) => prev.filter((t) => t.id !== id))
   }, [])
 
+  // Show a notification (webhook or calendar reminder) through the right channel
+  const notify = useCallback(
+    (event: WebhookEvent) => {
+      // Installed app: the app's own popup window (shows above other apps,
+      // plays the sound itself). Browser / popup disabled: in-app toast.
+      const usePopup = isTauri() && settings.desktopNotificationsEnabled
+      if (usePopup) {
+        invoke('show_notification', { event }).catch((err) => console.error('Popup failed', err))
+        return
+      }
+      setToastQueue((prev) => [event, ...prev.slice(0, 3)])
+      setTimeout(() => {
+        dismissToast(event.id)
+      }, 6000)
+
+      if (settings.desktopNotificationsEnabled) {
+        dispatchDesktopNotification(event.title, event.message, event.type)
+      } else if (settings.soundEnabled) {
+        soundManager.play(event.type)
+      }
+    },
+    [settings.desktopNotificationsEnabled, settings.soundEnabled, dismissToast]
+  )
+
   // Process incoming event logic
   const handleIncomingEvent = useCallback(
     (event: WebhookEvent) => {
@@ -120,17 +153,8 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
       setEvents((prev) => [event, ...prev.filter((e) => e.id !== event.id)])
       if (cloud) Api.saveEvent(event)
 
-      // Installed app: the app's own popup window (shows above other apps,
-      // plays the sound itself). Browser / popup disabled: in-app toast.
-      const usePopup = isTauri() && settings.desktopNotificationsEnabled
-      if (usePopup) {
-        invoke('show_notification', { event }).catch((err) => console.error('Popup failed', err))
-      } else {
-        setToastQueue((prev) => [event, ...prev.slice(0, 3)])
-        setTimeout(() => {
-          dismissToast(event.id)
-        }, 6000)
-      }
+      // Installed app with popups on: Rust already showed it (works with the window hidden)
+      if (!(isTauri() && settings.desktopNotificationsEnabled)) notify(event)
 
       // Confetti for success
       if (event.type === 'success') {
@@ -145,15 +169,6 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
         }
       }
 
-      // Desktop notification & sound
-      if (usePopup) {
-        // handled by the popup window
-      } else if (settings.desktopNotificationsEnabled) {
-        dispatchDesktopNotification(event.title, event.message, event.type)
-      } else if (settings.soundEnabled) {
-        soundManager.play(event.type)
-      }
-
       // Auto-sync calendar if it contains date or is calendar type
       if (settings.autoCalendarSync && (event.date || event.type === 'calendar')) {
         const calDate = event.date || new Date().toISOString().split('T')[0]
@@ -162,18 +177,42 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
           title: event.title,
           description: event.message,
           date: calDate,
-          time: event.time || new Date().toTimeString().substring(0, 5),
+          // Con fecha pero sin hora = todo el día; sin fecha = ocurre ahora
+          time: event.time || (event.date ? undefined : new Date().toTimeString().substring(0, 5)),
           type: event.type,
           category: event.category || (event.type === 'calendar' ? 'Reunión' : 'Webhook'),
           source: event.source,
           webhookId: event.id,
         }
+        // Si ya es la hora, el popup del webhook ya avisó: no repetir con un recordatorio
+        markRemindedIfPast(newCalEvent)
         setCalendarEvents((prev) => [newCalEvent, ...prev.filter((c) => c.webhookId !== event.id)])
         if (cloud) Api.saveCalendarEvent(newCalEvent)
       }
     },
-    [cloud, settings, dismissToast]
+    [cloud, settings.autoCalendarSync, settings.desktopNotificationsEnabled, notify]
   )
+
+  // Installed app: Rust pushes the popups, so it needs to know the setting
+  useEffect(() => {
+    if (isTauri()) invoke('set_popups_enabled', { enabled: settings.desktopNotificationsEnabled }).catch(() => {})
+  }, [settings.desktopNotificationsEnabled])
+
+  // Calendar reminders: notify when an event's date and time arrive
+  useEffect(() => {
+    // Installed app with popups: Rust schedules them so they fire even from the tray
+    if (isTauri() && settings.desktopNotificationsEnabled) {
+      invoke('set_reminders', { reminders: pendingReminders(calendarEvents) }).catch((err) =>
+        console.error('No se pudieron programar los recordatorios', err)
+      )
+      return
+    }
+    if (isTauri()) invoke('set_reminders', { reminders: [] }).catch(() => {})
+    const check = () => takeDueReminders(calendarEvents).forEach((ev) => notify(reminderNotification(ev)))
+    check()
+    const timer = setInterval(check, REMINDER_INTERVAL_MS)
+    return () => clearInterval(timer)
+  }, [calendarEvents, settings.desktopNotificationsEnabled, notify])
 
   // Installed app: webhooks arrive from the embedded Rust server as Tauri events
   useEffect(() => {
@@ -183,6 +222,7 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
       listen<WebhookEvent>('webhook', (e) => handleIncomingEvent(e.payload)),
       listen<boolean>('gateway-status', (e) => setIsGatewayOnline(e.payload)),
       listen<string>('navigate', (e) => setActiveTab(e.payload as AppContextType['activeTab'])),
+      listen<string>('reminder-fired', (e) => markReminded(e.payload)),
     ]
     invoke<boolean>('gateway_online').then((online) => {
       if (!cancelled) setIsGatewayOnline(online)
@@ -297,10 +337,23 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
         ...event,
         id: 'cal_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 5),
       }
+      markRemindedIfPast(newEvent)
       setCalendarEvents((prev) => [newEvent, ...prev])
       if (cloud) Api.saveCalendarEvent(newEvent)
     },
     [cloud]
+  )
+
+  const updateCalendarEvent = useCallback(
+    (id: string, changes: Partial<Omit<CalendarEvent, 'id'>>) => {
+      const current = calendarEvents.find((c) => c.id === id)
+      if (!current) return
+      const updated: CalendarEvent = { ...current, ...changes }
+      markRemindedIfPast(updated)
+      setCalendarEvents((prev) => prev.map((c) => (c.id === id ? updated : c)))
+      if (cloud) Api.saveCalendarEvent(updated)
+    },
+    [cloud, calendarEvents]
   )
 
   const deleteCalendarEvent = useCallback(
@@ -406,6 +459,7 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
         markAllAsRead,
         clearEvents,
         addCalendarEvent,
+        updateCalendarEvent,
         deleteCalendarEvent,
         updateSettings,
         isGatewayOnline,

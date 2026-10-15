@@ -195,7 +195,7 @@ pub fn start_server(app: AppHandle, online: Arc<AtomicBool>) {
           match parsed {
             Ok(payload) => {
               let event = parse_payload(payload);
-              let _ = app.emit("webhook", &event);
+              crate::deliver_webhook(&app, &event);
               json_response(
                 200,
                 json!({ "status": "success", "message": "Webhook recibido", "id": event.id }),
