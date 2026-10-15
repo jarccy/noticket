@@ -1,116 +1,18 @@
 import type { WebhookEvent, CalendarEvent, AppSettings } from '@/types'
 
+/**
+ * Espacio local (localStorage): lo que se crea sin sesión iniciada. Al iniciar sesión,
+ * el botón "Sincronizar" lo sube a la base de datos y lo quita de aquí.
+ * Los ajustes se guardan siempre en local (también los usa la ventana de notificaciones).
+ */
 const STORAGE_KEYS = {
   EVENTS: 'noticket_events',
   CALENDAR: 'noticket_calendar',
   SETTINGS: 'noticket_settings',
 }
 
-const todayStr = new Date().toISOString().split('T')[0]
-const tomorrowStr = new Date(Date.now() + 86400000).toISOString().split('T')[0]
-const inTwoDaysStr = new Date(Date.now() + 172800000).toISOString().split('T')[0]
-
-const DEFAULT_EVENTS: WebhookEvent[] = [
-  {
-    id: 'wh_init_1',
-    title: 'Despliegue a Producción Exitoso',
-    message: 'Versión 3.2.0 desplegada en clúster k8s de Frankfurt sin incidencias.',
-    type: 'success',
-    source: 'GitHub Actions',
-    timestamp: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-    read: false,
-    rawPayload: {
-      event: 'deployment.success',
-      repo: 'main-api',
-      release: 'v3.2.0',
-      duration: '4m 12s',
-      environment: 'production',
-    },
-  },
-  {
-    id: 'wh_init_2',
-    title: 'Planificación de Sprint Q4',
-    message: 'Reunión de sincronización y asignación de tickets de fin de año.',
-    type: 'calendar',
-    source: 'Jira Automations',
-    timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-    date: todayStr,
-    time: '16:00',
-    category: 'Reunión',
-    read: false,
-    rawPayload: {
-      summary: 'Planificación de Sprint Q4',
-      date: todayStr,
-      time: '16:00',
-      attendees: 6,
-      platform: 'Google Meet',
-    },
-  },
-  {
-    id: 'wh_init_3',
-    title: 'Alerta: Memoria RAM al 89%',
-    message: 'El pod redis-cache-01 ha superado el umbral de advertencia.',
-    type: 'warning',
-    source: 'Datadog',
-    timestamp: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-    read: true,
-    rawPayload: {
-      alert: 'HighMemoryUsage',
-      metric: 'node_memory_active_bytes',
-      threshold: '85%',
-      current: '89.2%',
-    },
-  },
-  {
-    id: 'wh_init_4',
-    title: 'Pago Recibido de Suscripción Enterprise',
-    message: 'Cliente Acme Corp ha renovado el plan anual por $12,400 USD.',
-    type: 'success',
-    source: 'Stripe Webhooks',
-    timestamp: new Date(Date.now() - 1000 * 60 * 240).toISOString(),
-    read: true,
-    rawPayload: {
-      event: 'invoice.payment_succeeded',
-      customer: 'Acme Corp',
-      amount: 1240000,
-      currency: 'usd',
-    },
-  },
-]
-
-const DEFAULT_CALENDAR_EVENTS: CalendarEvent[] = [
-  {
-    id: 'cal_1',
-    title: 'Planificación de Sprint Q4',
-    description: 'Reunión de sincronización y asignación de tickets de fin de año.',
-    date: todayStr,
-    time: '16:00',
-    type: 'calendar',
-    category: 'Reunión',
-    source: 'Jira Automations',
-    webhookId: 'wh_init_2',
-  },
-  {
-    id: 'cal_2',
-    title: 'Ventana de Mantenimiento Base de Datos',
-    description: 'Actualización de versión mayor de PostgreSQL y optimización de índices.',
-    date: tomorrowStr,
-    time: '02:00',
-    type: 'warning',
-    category: 'Mantenimiento',
-    source: 'AWS RDS',
-  },
-  {
-    id: 'cal_3',
-    title: 'Demo de Producto con Inversores',
-    description: 'Presentación de nuevas capacidades del Dashboard y Webhooks en tiempo real.',
-    date: inTwoDaysStr,
-    time: '11:00',
-    type: 'info',
-    category: 'Presentación',
-    source: 'Calendly Webhook',
-  },
-]
+// Datos de ejemplo de versiones anteriores: nunca se muestran ni se sincronizan
+const DEMO_IDS = new Set(['wh_init_1', 'wh_init_2', 'wh_init_3', 'wh_init_4', 'cal_1', 'cal_2', 'cal_3'])
 
 const DEFAULT_SETTINGS: AppSettings = {
   soundEnabled: true,
@@ -122,39 +24,53 @@ const DEFAULT_SETTINGS: AppSettings = {
   customAccent: '#0f766e',
 }
 
+function readList<T extends { id: string }>(key: string): T[] {
+  try {
+    const data = localStorage.getItem(key)
+    const list = data ? JSON.parse(data) : []
+    return Array.isArray(list) ? list.filter((item: T) => item && !DEMO_IDS.has(item.id)) : []
+  } catch {
+    return []
+  }
+}
+
+function writeList(key: string, list: unknown[]) {
+  try {
+    localStorage.setItem(key, JSON.stringify(list))
+  } catch (e) {
+    console.warn(`Could not save ${key} to localStorage`, e)
+  }
+}
+
 export const Storage = {
   getEvents(): WebhookEvent[] {
-    try {
-      const data = localStorage.getItem(STORAGE_KEYS.EVENTS)
-      return data ? JSON.parse(data) : DEFAULT_EVENTS
-    } catch {
-      return DEFAULT_EVENTS
-    }
+    return readList<WebhookEvent>(STORAGE_KEYS.EVENTS)
   },
 
   saveEvents(events: WebhookEvent[]) {
-    try {
-      localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events))
-    } catch (e) {
-      console.warn('Could not save events to localStorage', e)
-    }
+    writeList(STORAGE_KEYS.EVENTS, events)
+  },
+
+  /** Quita del espacio local los eventos ya subidos a la base. */
+  removeEvents(ids: Set<string>) {
+    writeList(STORAGE_KEYS.EVENTS, this.getEvents().filter((e) => !ids.has(e.id)))
   },
 
   getCalendarEvents(): CalendarEvent[] {
-    try {
-      const data = localStorage.getItem(STORAGE_KEYS.CALENDAR)
-      return data ? JSON.parse(data) : DEFAULT_CALENDAR_EVENTS
-    } catch {
-      return DEFAULT_CALENDAR_EVENTS
-    }
+    return readList<CalendarEvent>(STORAGE_KEYS.CALENDAR)
   },
 
   saveCalendarEvents(events: CalendarEvent[]) {
-    try {
-      localStorage.setItem(STORAGE_KEYS.CALENDAR, JSON.stringify(events))
-    } catch (e) {
-      console.warn('Could not save calendar events', e)
-    }
+    writeList(STORAGE_KEYS.CALENDAR, events)
+  },
+
+  removeCalendarEvents(ids: Set<string>) {
+    writeList(STORAGE_KEYS.CALENDAR, this.getCalendarEvents().filter((c) => !ids.has(c.id)))
+  },
+
+  /** Cuántos elementos locales faltan por subir a la base. */
+  pendingCount(): number {
+    return this.getEvents().length + this.getCalendarEvents().length
   },
 
   getSettings(): AppSettings {

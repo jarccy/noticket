@@ -4,7 +4,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use serde_json::Value;
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, WindowEvent};
+use tauri_plugin_notification::NotificationExt;
 
 const NOTIFY_LABEL: &str = "notify";
 const NOTIFY_WIDTH: f64 = 396.0;
@@ -67,21 +70,63 @@ fn layout_notifications(app: AppHandle, height: f64) -> Result<(), String> {
   Ok(())
 }
 
+/// Restore the main window from the tray / minimized state and focus it.
+fn show_main(app: &AppHandle) {
+  if let Some(main) = app.get_webview_window("main") {
+    let _ = main.unminimize();
+    let _ = main.show();
+    let _ = main.set_focus();
+  }
+}
+
 /// Clicking a popup brings the main window forward on the relevant tab.
 #[tauri::command]
 fn open_main(app: AppHandle, tab: String) -> Result<(), String> {
-  let main = app.get_webview_window("main").ok_or("main window missing")?;
-  let _ = main.unminimize();
-  let _ = main.show();
-  let _ = main.set_focus();
+  show_main(&app);
   app.emit_to("main", "navigate", tab).map_err(|e| e.to_string())
+}
+
+/// Tray icon: left click opens the app; the menu offers "Abrir" and "Salir".
+fn build_tray(app: &tauri::App) -> tauri::Result<()> {
+  let open = MenuItem::with_id(app, "open", "Abrir PulseDesk", true, None::<&str>)?;
+  let quit = MenuItem::with_id(app, "quit", "Salir", true, None::<&str>)?;
+  let menu = Menu::with_items(app, &[&open, &quit])?;
+
+  let mut tray = TrayIconBuilder::with_id("main")
+    .tooltip("PulseDesk — escuchando webhooks")
+    .menu(&menu)
+    .show_menu_on_left_click(false)
+    .on_menu_event(|app, event| match event.id.as_ref() {
+      "open" => show_main(app),
+      "quit" => app.exit(0),
+      _ => {}
+    })
+    .on_tray_icon_event(|tray, event| {
+      if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+        show_main(tray.app_handle());
+      }
+    });
+  if let Some(icon) = app.default_window_icon() {
+    tray = tray.icon(icon.clone());
+  }
+  tray.build(app)?;
+  Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   let online = Arc::new(AtomicBool::new(false));
 
-  tauri::Builder::default()
+  let mut builder = tauri::Builder::default();
+  // Must be the first plugin: a second launch (e.g. from the Start menu while the app
+  // sits in the tray) just brings the running window back instead of starting a copy
+  // that would fight over port 3690.
+  #[cfg(desktop)]
+  {
+    builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)));
+  }
+
+  builder
     .manage(GatewayState { online: online.clone() })
     .invoke_handler(tauri::generate_handler![
       ingest_webhook,
@@ -100,12 +145,27 @@ pub fn run() {
       }
       app.handle().plugin(tauri_plugin_notification::init())?;
 
-      // The hidden popup window would otherwise keep the process alive.
+      build_tray(app)?;
+
+      // Closing the main window hides it to the tray: the app keeps receiving webhooks
+      // and showing popups in the background. "Salir" in the tray menu really quits.
       if let Some(main) = app.get_webview_window("main") {
         let handle = app.handle().clone();
+        let win = main.clone();
+        let hinted = AtomicBool::new(false);
         main.on_window_event(move |e| {
-          if let WindowEvent::CloseRequested { .. } = e {
-            handle.exit(0);
+          if let WindowEvent::CloseRequested { api, .. } = e {
+            api.prevent_close();
+            let _ = win.hide();
+            // Tell the user once per session where the app went
+            if !hinted.swap(true, Ordering::Relaxed) {
+              let _ = handle
+                .notification()
+                .builder()
+                .title("PulseDesk sigue en segundo plano")
+                .body("Seguirás recibiendo webhooks. Ábrela desde el icono de la bandeja o ciérrala con «Salir».")
+                .show();
+            }
           }
         });
       }

@@ -2,11 +2,12 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import confetti from 'canvas-confetti'
 import type { WebhookEvent, CalendarEvent, AppSettings } from '@/types'
 import { Storage } from '@/services/storage'
-import { Api, API_URL } from '@/services/api'
+import { Api, API_URL, AuthApi } from '@/services/api'
 import { dispatchDesktopNotification, requestNotificationPermission } from '@/services/notifications'
 import { soundManager } from '@/services/sound'
 import { applyAccent } from '@/lib/accent'
 import { isTauri } from '@/lib/platform'
+import { parseWebhookLocally } from '@/lib/webhook-parser'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
@@ -30,13 +31,29 @@ interface AppContextType {
   setOpenSimulator: (open: boolean) => void
   toastQueue: WebhookEvent[]
   dismissToast: (id: string) => void
+  /** 'local': sin sesión, todo en este equipo. 'cloud': con sesión, todo en la base. */
+  mode: DataMode
+  /** Elementos del espacio local pendientes de subir (solo en modo 'cloud'). */
+  pendingSync: number
+  syncing: boolean
+  syncLocalData: () => Promise<SyncResult>
+}
+
+export type DataMode = 'local' | 'cloud'
+
+export interface SyncResult {
+  uploaded: number
+  failed: number
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined)
 
-export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [events, setEvents] = useState<WebhookEvent[]>(() => Storage.getEvents())
-  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>(() => Storage.getCalendarEvents())
+export function AppProvider({ mode, children }: { mode: DataMode; children: React.ReactNode }) {
+  const cloud = mode === 'cloud'
+  const [events, setEvents] = useState<WebhookEvent[]>(() => (cloud ? [] : Storage.getEvents()))
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>(() => (cloud ? [] : Storage.getCalendarEvents()))
+  const [pendingSync, setPendingSync] = useState(() => (cloud ? Storage.pendingCount() : 0))
+  const [syncing, setSyncing] = useState(false)
   const [settings, setSettings] = useState<AppSettings>(() => Storage.getSettings())
   const [activeTab, setActiveTab] = useState<'dashboard' | 'calendar' | 'webhooks' | 'settings'>('dashboard')
   const [isGatewayOnline, setIsGatewayOnline] = useState(false)
@@ -62,30 +79,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     applyAccent(settings.accentColor)
   }, [settings.accentColor])
 
-  // Load persisted data from the Go backend (PostgreSQL). localStorage stays as offline cache.
-  useEffect(() => {
-    let cancelled = false
-    Promise.all([Api.getEvents(), Api.getCalendarEvents(), Api.getSettings()])
-      .then(([dbEvents, dbCalendar, dbSettings]) => {
-        if (cancelled) return
-        setEvents(dbEvents)
-        setCalendarEvents(dbCalendar)
-        setSettings((prev) => ({ ...prev, ...dbSettings }))
-      })
-      .catch((err) => console.warn('[api] backend no disponible, usando localStorage', err))
-    return () => {
-      cancelled = true
-    }
+  // Cloud: load persisted data from the Go backend (PostgreSQL)
+  const loadFromServer = useCallback(async () => {
+    const [dbEvents, dbCalendar, dbSettings] = await Promise.all([
+      Api.getEvents(),
+      Api.getCalendarEvents(),
+      Api.getSettings(),
+    ])
+    setEvents(dbEvents)
+    setCalendarEvents(dbCalendar)
+    setSettings((prev) => ({ ...prev, ...dbSettings }))
   }, [])
 
-  // Save to storage
   useEffect(() => {
-    Storage.saveEvents(events)
-  }, [events])
+    if (!cloud) return
+    loadFromServer().catch((err) => console.warn('[api] no se pudieron cargar los datos del backend', err))
+  }, [cloud, loadFromServer])
+
+  // Local: everything lives in localStorage until it's synced
+  useEffect(() => {
+    if (!cloud) Storage.saveEvents(events)
+  }, [cloud, events])
 
   useEffect(() => {
-    Storage.saveCalendarEvents(calendarEvents)
-  }, [calendarEvents])
+    if (!cloud) Storage.saveCalendarEvents(calendarEvents)
+  }, [cloud, calendarEvents])
 
   useEffect(() => {
     Storage.saveSettings(settings)
@@ -100,7 +118,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     (event: WebhookEvent) => {
       // Add to events
       setEvents((prev) => [event, ...prev.filter((e) => e.id !== event.id)])
-      Api.saveEvent(event)
+      if (cloud) Api.saveEvent(event)
 
       // Installed app: the app's own popup window (shows above other apps,
       // plays the sound itself). Browser / popup disabled: in-app toast.
@@ -151,10 +169,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           webhookId: event.id,
         }
         setCalendarEvents((prev) => [newCalEvent, ...prev.filter((c) => c.webhookId !== event.id)])
-        Api.saveCalendarEvent(newCalEvent)
+        if (cloud) Api.saveCalendarEvent(newCalEvent)
       }
     },
-    [settings, dismissToast]
+    [cloud, settings, dismissToast]
   )
 
   // Installed app: webhooks arrive from the embedded Rust server as Tauri events
@@ -175,15 +193,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [handleIncomingEvent])
 
-  // Browser: listen to SSE `/api/events` from the Go backend (notiback)
+  // Browser with a session: listen to SSE `/api/events` from the Go backend (notiback)
   useEffect(() => {
-    if (isTauri()) return
+    if (isTauri() || !cloud) return
     let eventSource: EventSource | null = null
     let retryTimeout: ReturnType<typeof setTimeout>
 
     const connectSSE = () => {
       try {
-        eventSource = new EventSource(API_URL + '/api/events')
+        eventSource = new EventSource(AuthApi.eventsUrl())
 
         eventSource.onopen = () => {
           setIsGatewayOnline(true)
@@ -220,13 +238,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (eventSource) eventSource.close()
       clearTimeout(retryTimeout)
     }
-  }, [handleIncomingEvent])
+  }, [cloud, handleIncomingEvent])
 
   const addWebhookEvent = useCallback(
     async (raw: Record<string, unknown>) => {
       // Installed app: same parser + event path as real webhooks
       if (isTauri()) {
         await invoke('ingest_webhook', { payload: raw })
+        return
+      }
+      // Browser without a session: the event stays on this device
+      if (!cloud) {
+        handleIncomingEvent(parseWebhookLocally(raw))
         return
       }
       // Browser: post to the Go backend (it persists + broadcasts via SSE), fall back to a local event
@@ -243,61 +266,103 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           throw new Error('Endpoint returned error')
         }
       } catch {
-        // Fallback local simulated event if server offline
-        const now = new Date()
-        const id = 'wh_local_' + Date.now().toString(36)
-        const event: WebhookEvent = {
-          id,
-          title: (raw.title as string) || (raw.event as string) || 'Notificación Local',
-          message: (raw.message as string) || (raw.description as string) || JSON.stringify(raw),
-          type: (raw.type as 'info') || 'info',
-          source: (raw.source as string) || 'Simulador UI',
-          timestamp: now.toISOString(),
-          date: raw.date as string,
-          time: raw.time as string,
-          category: raw.category as string,
-          read: false,
-          rawPayload: raw,
-        }
-        handleIncomingEvent(event)
+        // Server offline: build the event here (handleIncomingEvent still tries to save it)
+        handleIncomingEvent(parseWebhookLocally(raw))
       }
     },
-    [handleIncomingEvent, settings.webhookSecret]
+    [cloud, handleIncomingEvent, settings.webhookSecret]
   )
 
-  const markAsRead = useCallback((id: string) => {
-    setEvents((prev) => prev.map((e) => (e.id === id ? { ...e, read: true } : e)))
-    Api.markAsRead(id)
-  }, [])
+  const markAsRead = useCallback(
+    (id: string) => {
+      setEvents((prev) => prev.map((e) => (e.id === id ? { ...e, read: true } : e)))
+      if (cloud) Api.markAsRead(id)
+    },
+    [cloud]
+  )
 
   const markAllAsRead = useCallback(() => {
     setEvents((prev) => prev.map((e) => ({ ...e, read: true })))
-    Api.markAllAsRead()
-  }, [])
+    if (cloud) Api.markAllAsRead()
+  }, [cloud])
 
   const clearEvents = useCallback(() => {
     setEvents([])
-    Api.clearEvents()
-  }, [])
+    if (cloud) Api.clearEvents()
+  }, [cloud])
 
-  const addCalendarEvent = useCallback((event: Omit<CalendarEvent, 'id'>) => {
-    const newEvent: CalendarEvent = {
-      ...event,
-      id: 'cal_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 5),
+  const addCalendarEvent = useCallback(
+    (event: Omit<CalendarEvent, 'id'>) => {
+      const newEvent: CalendarEvent = {
+        ...event,
+        id: 'cal_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 5),
+      }
+      setCalendarEvents((prev) => [newEvent, ...prev])
+      if (cloud) Api.saveCalendarEvent(newEvent)
+    },
+    [cloud]
+  )
+
+  const deleteCalendarEvent = useCallback(
+    (id: string) => {
+      setCalendarEvents((prev) => prev.filter((c) => c.id !== id))
+      if (cloud) Api.deleteCalendarEvent(id)
+    },
+    [cloud]
+  )
+
+  const updateSettings = useCallback(
+    (newSettings: Partial<AppSettings>) => {
+      setSettings((prev) => ({ ...prev, ...newSettings }))
+      if (cloud) Api.saveSettings(newSettings)
+    },
+    [cloud]
+  )
+
+  /**
+   * Sube a la base lo creado sin sesión (webhooks primero, luego el calendario, que puede
+   * apuntar a ellos). Lo que se sube se quita del espacio local; lo que falla se queda
+   * pendiente para el siguiente intento.
+   */
+  const syncLocalData = useCallback(async (): Promise<SyncResult> => {
+    setSyncing(true)
+    try {
+      const uploadedEvents = new Set<string>()
+      const uploadedCalendar = new Set<string>()
+      let failed = 0
+
+      for (const event of Storage.getEvents()) {
+        try {
+          await Api.uploadEvent(event)
+          uploadedEvents.add(event.id)
+        } catch (err) {
+          failed++
+          console.warn('[sync] webhook no subido', event.id, err)
+        }
+      }
+
+      // Un evento de calendario solo puede enlazar un webhook que exista en la base
+      const knownWebhooks = new Set([...uploadedEvents, ...events.map((e) => e.id)])
+      for (const cal of Storage.getCalendarEvents()) {
+        const payload = cal.webhookId && !knownWebhooks.has(cal.webhookId) ? { ...cal, webhookId: undefined } : cal
+        try {
+          await Api.uploadCalendarEvent(payload)
+          uploadedCalendar.add(cal.id)
+        } catch (err) {
+          failed++
+          console.warn('[sync] evento de calendario no subido', cal.id, err)
+        }
+      }
+
+      Storage.removeEvents(uploadedEvents)
+      Storage.removeCalendarEvents(uploadedCalendar)
+      setPendingSync(Storage.pendingCount())
+      await loadFromServer().catch((err) => console.warn('[sync] no se pudo recargar', err))
+      return { uploaded: uploadedEvents.size + uploadedCalendar.size, failed }
+    } finally {
+      setSyncing(false)
     }
-    setCalendarEvents((prev) => [newEvent, ...prev])
-    Api.saveCalendarEvent(newEvent)
-  }, [])
-
-  const deleteCalendarEvent = useCallback((id: string) => {
-    setCalendarEvents((prev) => prev.filter((c) => c.id !== id))
-    Api.deleteCalendarEvent(id)
-  }, [])
-
-  const updateSettings = useCallback((newSettings: Partial<AppSettings>) => {
-    setSettings((prev) => ({ ...prev, ...newSettings }))
-    Api.saveSettings(newSettings)
-  }, [])
+  }, [events, loadFromServer])
 
   const triggerNotificationTest = useCallback(async () => {
     if (isTauri()) {
@@ -349,6 +414,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setOpenSimulator,
         toastQueue,
         dismissToast,
+        mode,
+        pendingSync,
+        syncing,
+        syncLocalData,
       }}
     >
       {children}

@@ -16,7 +16,8 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
-import { WEBHOOK_ENDPOINT } from '@/lib/platform'
+import { AccountPanel } from '@/components/layout/AccountPanel'
+import { isTauri, WEBHOOK_ENDPOINT } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 
 type Tab = ReturnType<typeof useApp>['activeTab']
@@ -61,6 +62,7 @@ export function Sidebar() {
     events,
     unreadCount,
     isGatewayOnline,
+    mode,
     settings,
     updateSettings,
     setOpenSimulator,
@@ -116,7 +118,7 @@ export function Sidebar() {
             <p className="truncate text-sm font-semibold tracking-tight text-foreground">PulseDesk</p>
             <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
               <span className={cn('h-1.5 w-1.5 rounded-full', isGatewayOnline ? 'bg-success' : 'bg-warning')} />
-              {isGatewayOnline ? 'Escuchando en :3690' : 'Gateway desconectado'}
+              {isGatewayOnline ? 'Escuchando en :3690' : mode === 'local' && !isTauri() ? 'Modo local' : 'Gateway desconectado'}
             </p>
           </div>
         )}
@@ -214,6 +216,9 @@ export function Sidebar() {
           </IconAction>
         </div>
       </div>
+
+      {/* Account / sync */}
+      <AccountPanel collapsed={collapsed} />
     </aside>
   )
 }
