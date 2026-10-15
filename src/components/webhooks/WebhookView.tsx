@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
-import { format } from 'date-fns'
-import { Search, Trash2, CheckCheck, ChevronDown, RefreshCw, CalendarDays, Inbox, X } from 'lucide-react'
+import { Search, Trash2, CheckCheck, ChevronDown, RefreshCw, Inbox, X } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
+import { useAuth } from '@/context/AuthContext'
+import { isAdmin } from '@/lib/auth'
+import { EventDetails } from '@/components/webhooks/EventDetails'
 import { PageHeader } from '@/components/ui/page-header'
 import { Segmented } from '@/components/ui/segmented'
 import { StatusIcon, TYPE_FILTERS, relativeTime, type TypeFilter } from '@/components/ui/status'
@@ -74,6 +76,8 @@ export function WebhookView() {
   const [codeLang, setCodeLang] = useState<CodeLang>('curl')
   const [confirmClear, setConfirmClear] = useState(false)
   const { copiedKey, copy } = useCopy()
+  const { user } = useAuth()
+  const admin = isAdmin(user)
 
   // Two-step clear: the button asks for confirmation for a few seconds
   useEffect(() => {
@@ -88,7 +92,7 @@ export function WebhookView() {
       e.title.toLowerCase().includes(term) ||
       e.message.toLowerCase().includes(term) ||
       e.source.toLowerCase().includes(term) ||
-      JSON.stringify(e.rawPayload).toLowerCase().includes(term)
+      (admin && JSON.stringify(e.rawPayload).toLowerCase().includes(term))
     const matchesType = filterType === 'all' || e.type === filterType
     return matchesSearch && matchesType
   })
@@ -99,21 +103,27 @@ export function WebhookView() {
     <div className="space-y-6">
       <PageHeader
         title="Webhooks & Logs"
-        description="Inspecciona los payloads recibidos y consulta cómo integrar tus servicios."
+        description={
+          admin
+            ? 'Inspecciona los payloads recibidos y consulta cómo integrar tus servicios.'
+            : 'Todas las notificaciones que has recibido, con su detalle.'
+        }
         actions={
-          <Segmented
-            ariaLabel="Vista"
-            value={view}
-            onChange={setView}
-            options={[
-              { id: 'history', label: 'Historial', count: events.length },
-              { id: 'docs', label: 'Integración' },
-            ]}
-          />
+          user && (
+            <Segmented
+              ariaLabel="Vista"
+              value={view}
+              onChange={setView}
+              options={[
+                { id: 'history', label: 'Historial', count: events.length },
+                { id: 'docs', label: 'Integración' },
+              ]}
+            />
+          )
         }
       />
 
-      {view === 'history' ? (
+      {view === 'history' || !user ? (
         <div className="space-y-3">
           {/* Toolbar */}
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -123,7 +133,7 @@ export function WebhookView() {
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Buscar por título, fuente o contenido JSON"
+                placeholder={admin ? 'Buscar por título, fuente o contenido JSON' : 'Buscar por título, mensaje o fuente'}
                 aria-label="Buscar webhooks"
                 className="h-9 w-full rounded-lg border border-input bg-card pl-9 pr-9 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
               />
@@ -190,7 +200,9 @@ export function WebhookView() {
                 <p className="max-w-sm text-xs text-muted-foreground">
                   {searchTerm || filterType !== 'all'
                     ? 'Prueba con otro término o quita el filtro.'
-                    : 'Envía un POST al endpoint o usa "Enviar webhook" en el menú lateral.'}
+                    : user
+                      ? 'Aquí aparecerán las notificaciones que recibas.'
+                      : 'Inicia sesión para recibir webhooks de tus servicios.'}
                 </p>
               </div>
             ) : (
@@ -226,40 +238,36 @@ export function WebhookView() {
                       </button>
 
                       {isExpanded && (
-                        <div className="space-y-3 px-4 pb-4 md:pl-[60px]">
-                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                            <span className="md:hidden">{event.source}</span>
-                            <span>{format(new Date(event.timestamp), 'dd/MM/yyyy HH:mm:ss')}</span>
-                            <span className="font-mono">{event.id}</span>
-                            {event.date && (
-                              <span className="inline-flex items-center gap-1 text-primary">
-                                <CalendarDays className="h-3.5 w-3.5" />
-                                {event.date} {event.time ?? ''}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-sm leading-relaxed text-foreground">{event.message}</p>
-                          <CodeBlock
-                            label="payload.json"
+                        <div className="px-4 pb-4 md:pl-[60px]">
+                          <EventDetails
+                            event={event}
+                            showJsonToggle={admin}
                             actions={
-                              <>
+                              admin && (
                                 <button
                                   type="button"
                                   onClick={() => addWebhookEvent(event.rawPayload)}
-                                  className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                                 >
                                   <RefreshCw className="h-3.5 w-3.5" />
                                   Re-enviar
                                 </button>
-                                <CopyButton
-                                  copied={copiedKey === event.id}
-                                  onClick={() => copy(event.id, JSON.stringify(event.rawPayload, null, 2))}
-                                />
-                              </>
+                              )
                             }
-                          >
-                            {JSON.stringify(event.rawPayload, null, 2)}
-                          </CodeBlock>
+                            json={
+                              <CodeBlock
+                                label={`payload.json · ${event.id}`}
+                                actions={
+                                  <CopyButton
+                                    copied={copiedKey === event.id}
+                                    onClick={() => copy(event.id, JSON.stringify(event.rawPayload, null, 2))}
+                                  />
+                                }
+                              >
+                                {JSON.stringify(event.rawPayload, null, 2)}
+                              </CodeBlock>
+                            }
+                          />
                         </div>
                       )}
                     </li>

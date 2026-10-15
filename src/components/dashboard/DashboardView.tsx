@@ -3,6 +3,9 @@ import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { ArrowUpRight, ChevronDown, Inbox, Zap } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
+import { useAuth } from '@/context/AuthContext'
+import { isAdmin } from '@/lib/auth'
+import { EventDetails } from '@/components/webhooks/EventDetails'
 import { PageHeader } from '@/components/ui/page-header'
 import { Segmented } from '@/components/ui/segmented'
 import { StatusIcon, TYPE_FILTERS, relativeTime, clockTime, type TypeFilter } from '@/components/ui/status'
@@ -56,6 +59,7 @@ export function DashboardView() {
   const [filterType, setFilterType] = useState<TypeFilter>('all')
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null)
   const { copiedKey, copy } = useCopy()
+  const admin = isAdmin(useAuth().user)
 
   const todayStr = format(new Date(), 'yyyy-MM-dd')
   const todayCalendarCount = calendarEvents.filter((c) => c.date === todayStr).length
@@ -178,20 +182,25 @@ export function DashboardView() {
                         />
                       </button>
                       {isExpanded && (
-                        <div className="space-y-3 px-4 pb-4 pl-[60px]">
-                          <p className="text-sm leading-relaxed text-muted-foreground">{event.message}</p>
-                          <CodeBlock
-                            label={`payload · ${clockTime(event.timestamp)}`}
-                            maxHeight="max-h-48"
-                            actions={
-                              <CopyButton
-                                copied={copiedKey === event.id}
-                                onClick={() => copy(event.id, JSON.stringify(event.rawPayload, null, 2))}
-                              />
+                        <div className="px-4 pb-4 sm:pl-[60px]">
+                          <EventDetails
+                            event={event}
+                            showJsonToggle={admin}
+                            json={
+                              <CodeBlock
+                                label={`payload · ${clockTime(event.timestamp)}`}
+                                maxHeight="max-h-48"
+                                actions={
+                                  <CopyButton
+                                    copied={copiedKey === event.id}
+                                    onClick={() => copy(event.id, JSON.stringify(event.rawPayload, null, 2))}
+                                  />
+                                }
+                              >
+                                {JSON.stringify(event.rawPayload, null, 2)}
+                              </CodeBlock>
                             }
-                          >
-                            {JSON.stringify(event.rawPayload, null, 2)}
-                          </CodeBlock>
+                          />
                         </div>
                       )}
                     </li>

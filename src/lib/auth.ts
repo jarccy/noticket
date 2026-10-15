@@ -4,6 +4,9 @@ import type { UserType } from '@/types'
 
 export const PASSWORD_MIN_LENGTH = 8
 
+/** Administrador: ve los datos técnicos (payload JSON, integración). */
+export const isAdmin = (user: AuthUser | null) => user?.userType === 'admin'
+
 /** Puede crear grupos y enviar notificaciones a varios (boss o admin). */
 export const canManageGroups = (user: AuthUser | null) => user?.userType === 'boss' || user?.userType === 'admin'
 
