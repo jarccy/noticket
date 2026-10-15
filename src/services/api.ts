@@ -120,11 +120,15 @@ export const Api = {
     fireAndForget(request(`/api/webhooks/${encodeURIComponent(id)}/read`, { method: 'PATCH' })),
   markAllAsRead: () => fireAndForget(request('/api/webhooks/read-all', { method: 'POST' })),
   clearEvents: () => fireAndForget(request('/api/webhooks', { method: 'DELETE' })),
+  deleteEvents: (ids: string[]) =>
+    fireAndForget(request('/api/webhooks/delete', { method: 'POST', body: body({ ids }) })),
 
   saveCalendarEvent: (event: CalendarEvent) =>
     fireAndForget(request(`/api/calendar/${encodeURIComponent(event.id)}`, { method: 'PUT', body: body(event) })),
   deleteCalendarEvent: (id: string) =>
     fireAndForget(request(`/api/calendar/${encodeURIComponent(id)}`, { method: 'DELETE' })),
+  deleteCalendarEvents: (ids: string[]) =>
+    fireAndForget(request('/api/calendar/delete', { method: 'POST', body: body({ ids }) })),
 
   saveSettings: (settings: Partial<AppSettings>) =>
     fireAndForget(request('/api/settings', { method: 'PATCH', body: body(settings) })),

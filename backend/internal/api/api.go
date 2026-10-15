@@ -85,6 +85,7 @@ func (s *Server) Router() *gin.Engine {
 		wh.POST("", s.saveWebhook) // la app guarda eventos que recibió por Tauri/Vite
 		wh.DELETE("", s.clearWebhooks)
 		wh.POST("/read-all", s.markAllRead)
+		wh.POST("/delete", s.deleteWebhooks) // borrado en lote: {"ids": [...]}
 		wh.GET("/:id", s.getWebhook)
 		wh.PATCH("/:id/read", s.markRead)
 		wh.DELETE("/:id", s.deleteWebhook) // ?scope=all: retirarlo para todos (creador o admin)
@@ -98,6 +99,7 @@ func (s *Server) Router() *gin.Engine {
 		cal.POST("", s.createCalendar)
 		cal.PUT("/:id", s.updateCalendar)
 		cal.DELETE("/:id", s.deleteCalendar)
+		cal.POST("/delete", s.deleteCalendarBatch) // borrado en lote: {"ids": [...]}
 
 		// Ajustes del usuario
 		api.GET("/settings", s.getSettings)

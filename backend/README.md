@@ -76,12 +76,14 @@ Los webhooks y eventos de calendario anteriores a la migración 003 no tienen du
 | PATCH | `/api/webhooks/{id}/read` 🔒 | Marcar como leído |
 | POST | `/api/webhooks/read-all` 🔒 | Marcar todos como leídos |
 | DELETE | `/api/webhooks/{id}` 🔒 | Quitarlo de tu historial · `?scope=all`: retirarlo para todos (creador o admin) |
+| POST | `/api/webhooks/delete` 🔒 | Quitar varios de tu historial: `{"ids": [...]}` (máx. 1000) |
 | DELETE | `/api/webhooks` 🔒 | Vaciar tu historial |
 | POST | `/api/notifications` 🔒 | Enviar una notificación (mismo formato que un webhook). Sin destinatarios: propia. `groupIds` 👑: a tus grupos (admin: a cualquiera). `userIds` 🛡️ |
 | GET | `/api/calendar?from=&to=&scope=all` 🔒 | Tu calendario (`scope=all` 🛡️: todos) |
 | POST | `/api/calendar` 🔒 | Crear evento |
 | PUT | `/api/calendar/{id}` 🔒 | Crear o actualizar evento |
 | DELETE | `/api/calendar/{id}` 🔒 | Borrar evento (lógico) |
+| POST | `/api/calendar/delete` 🔒 | Borrar varios eventos: `{"ids": [...]}` (máx. 1000) |
 | GET | `/api/settings` 🔒 | Tus ajustes (se crean la primera vez, con un `webhookSecret` aleatorio) |
 | PUT/PATCH | `/api/settings` 🔒 | Actualizar ajustes (parcial). `webhookSecret` mínimo 16 caracteres y único |
 | POST | `/api/settings/webhook-secret` 🔒 | Genera un secreto nuevo (el anterior deja de valer) |

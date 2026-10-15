@@ -30,9 +30,12 @@ interface AppContextType {
   markAsRead: (id: string) => void
   markAllAsRead: () => void
   clearEvents: () => void
+  /** Borra los webhooks indicados del historial. */
+  deleteEvents: (ids: string[]) => void
   addCalendarEvent: (event: Omit<CalendarEvent, 'id'>) => void
   updateCalendarEvent: (id: string, changes: Partial<Omit<CalendarEvent, 'id'>>) => void
   deleteCalendarEvent: (id: string) => void
+  deleteCalendarEvents: (ids: string[]) => void
   updateSettings: (newSettings: Partial<AppSettings>) => void
   isGatewayOnline: boolean
   triggerNotificationTest: () => void
@@ -344,6 +347,16 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
     if (cloud) Api.clearEvents()
   }, [cloud])
 
+  const deleteEvents = useCallback(
+    (ids: string[]) => {
+      if (ids.length === 0) return
+      const set = new Set(ids)
+      setEvents((prev) => prev.filter((e) => !set.has(e.id)))
+      if (cloud) Api.deleteEvents(ids)
+    },
+    [cloud]
+  )
+
   const addCalendarEvent = useCallback(
     (event: Omit<CalendarEvent, 'id'>) => {
       const newEvent: CalendarEvent = {
@@ -373,6 +386,16 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
     (id: string) => {
       setCalendarEvents((prev) => prev.filter((c) => c.id !== id))
       if (cloud) Api.deleteCalendarEvent(id)
+    },
+    [cloud]
+  )
+
+  const deleteCalendarEvents = useCallback(
+    (ids: string[]) => {
+      if (ids.length === 0) return
+      const set = new Set(ids)
+      setCalendarEvents((prev) => prev.filter((c) => !set.has(c.id)))
+      if (cloud) Api.deleteCalendarEvents(ids)
     },
     [cloud]
   )
@@ -471,9 +494,11 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
         markAsRead,
         markAllAsRead,
         clearEvents,
+        deleteEvents,
         addCalendarEvent,
         updateCalendarEvent,
         deleteCalendarEvent,
+        deleteCalendarEvents,
         updateSettings,
         isGatewayOnline,
         triggerNotificationTest,

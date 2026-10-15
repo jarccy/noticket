@@ -89,3 +89,16 @@ func (s *Server) deleteCalendar(c *gin.Context) {
 	}
 	c.Status(http.StatusNoContent)
 }
+
+func (s *Server) deleteCalendarBatch(c *gin.Context) {
+	ids, ok := bindIDs(c)
+	if !ok {
+		return
+	}
+	n, err := s.store.DeleteCalendarEvents(c.Request.Context(), ids, currentUser(c).ID)
+	if err != nil {
+		writeStoreError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"deleted": n})
+}

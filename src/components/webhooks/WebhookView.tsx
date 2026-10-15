@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Search, Trash2, CheckCheck, ChevronDown, RefreshCw, Inbox, X } from 'lucide-react'
+import { useState } from 'react'
+import { Search, Trash2, CheckCheck, ListChecks, ChevronDown, RefreshCw, Inbox, X } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
 import { useAuth } from '@/context/AuthContext'
 import { isAdmin } from '@/lib/auth'
@@ -9,6 +9,8 @@ import { Segmented } from '@/components/ui/segmented'
 import { StatusIcon, TYPE_FILTERS, relativeTime, type TypeFilter } from '@/components/ui/status'
 import { CodeBlock, CopyButton, useCopy } from '@/components/ui/payload-block'
 import { isTauri, WEBHOOK_ENDPOINT } from '@/lib/platform'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { Checkbox, SelectionBar, useSelection } from '@/components/ui/selection'
 import { cn } from '@/lib/utils'
 
 type CodeLang = 'curl' | 'powershell' | 'js' | 'python'
@@ -67,24 +69,18 @@ const FIELDS = [
 ]
 
 export function WebhookView() {
-  const { events, markAsRead, markAllAsRead, clearEvents, addWebhookEvent } = useApp()
+  const { events, markAsRead, markAllAsRead, clearEvents, deleteEvents, addWebhookEvent } = useApp()
 
   const [searchTerm, setSearchTerm] = useState('')
   const [filterType, setFilterType] = useState<TypeFilter>('all')
   const [view, setView] = useState<'history' | 'docs'>('history')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [codeLang, setCodeLang] = useState<CodeLang>('curl')
-  const [confirmClear, setConfirmClear] = useState(false)
+  // Borrado pendiente de confirmar: unos ids concretos o todo el historial
+  const [pendingDelete, setPendingDelete] = useState<{ ids: string[]; all?: boolean } | null>(null)
   const { copiedKey, copy } = useCopy()
   const { user } = useAuth()
   const admin = isAdmin(user)
-
-  // Two-step clear: the button asks for confirmation for a few seconds
-  useEffect(() => {
-    if (!confirmClear) return
-    const t = setTimeout(() => setConfirmClear(false), 3000)
-    return () => clearTimeout(t)
-  }, [confirmClear])
 
   const term = searchTerm.toLowerCase()
   const filteredEvents = events.filter((e) => {
@@ -98,6 +94,20 @@ export function WebhookView() {
   })
 
   const unread = events.filter((e) => !e.read).length
+  const selection = useSelection(filteredEvents.map((e) => e.id))
+
+  const confirmDelete = () => {
+    if (!pendingDelete) return
+    if (pendingDelete.all) clearEvents()
+    else deleteEvents(pendingDelete.ids)
+    if (expandedId && pendingDelete.ids.includes(expandedId)) setExpandedId(null)
+    setPendingDelete(null)
+    selection.stop()
+  }
+
+  const pendingTitles = pendingDelete
+    ? events.filter((e) => pendingDelete.all || pendingDelete.ids.includes(e.id)).map((e) => e.title)
+    : []
 
   return (
     <div className="space-y-6">
@@ -167,27 +177,39 @@ export function WebhookView() {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  if (confirmClear) {
-                    clearEvents()
-                    setConfirmClear(false)
-                  } else {
-                    setConfirmClear(true)
-                  }
-                }}
-                disabled={events.length === 0}
+                onClick={() => (selection.active ? selection.stop() : selection.start())}
+                disabled={filteredEvents.length === 0}
+                aria-pressed={selection.active}
                 className={cn(
                   'inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors disabled:pointer-events-none disabled:opacity-40',
-                  confirmClear
-                    ? 'bg-destructive text-destructive-foreground'
-                    : 'text-muted-foreground hover:bg-destructive/10 hover:text-destructive'
+                  selection.active
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                 )}
               >
+                <ListChecks className="h-3.5 w-3.5" />
+                Seleccionar
+              </button>
+              <button
+                type="button"
+                onClick={() => setPendingDelete({ ids: events.map((e) => e.id), all: true })}
+                disabled={events.length === 0}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:pointer-events-none disabled:opacity-40"
+              >
                 <Trash2 className="h-3.5 w-3.5" />
-                {confirmClear ? '¿Borrar todo?' : 'Limpiar'}
+                Limpiar
               </button>
             </div>
           </div>
+
+          {selection.active && filteredEvents.length > 0 && (
+            <SelectionBar
+              selection={selection}
+              total={filteredEvents.length}
+              noun={['webhook seleccionado', 'webhooks seleccionados']}
+              onDelete={() => setPendingDelete({ ids: selection.selected })}
+            />
+          )}
 
           {/* Log list */}
           <div className="overflow-hidden rounded-xl border border-border bg-card">
@@ -208,74 +230,124 @@ export function WebhookView() {
             ) : (
               <ul className="divide-y divide-border">
                 {filteredEvents.map((event) => {
-                  const isExpanded = expandedId === event.id
+                  const selecting = selection.active
+                  const isSelected = selecting && selection.isSelected(event.id)
+                  const isExpanded = !selecting && expandedId === event.id
                   return (
-                    <li key={event.id} className={cn(isExpanded && 'bg-accent/30')}>
-                      <button
-                        type="button"
-                        aria-expanded={isExpanded}
-                        onClick={() => {
-                          markAsRead(event.id)
-                          setExpandedId(isExpanded ? null : event.id)
-                        }}
-                        className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/40 md:grid-cols-[auto_minmax(0,1fr)_160px_110px_auto]"
-                      >
-                        <StatusIcon type={event.type} />
-                        <div className="min-w-0">
-                          <p className={cn('flex items-center gap-2 truncate text-sm text-foreground', !event.read && 'font-semibold')}>
-                            {!event.read && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-label="No leído" />}
-                            <span className="truncate">{event.title}</span>
-                          </p>
-                          <p className="truncate text-xs text-muted-foreground">{event.message}</p>
-                        </div>
-                        <span className="hidden truncate text-xs text-muted-foreground md:block">{event.source}</span>
-                        <span className="hidden text-right text-xs text-muted-foreground md:block" title={new Date(event.timestamp).toLocaleString()}>
-                          {relativeTime(event.timestamp)}
-                        </span>
-                        <ChevronDown
-                          className={cn('h-4 w-4 text-muted-foreground transition-transform', isExpanded && 'rotate-180')}
-                        />
-                      </button>
-
-                      {isExpanded && (
-                        <div className="px-4 pb-4 md:pl-[60px]">
-                          <EventDetails
-                            event={event}
-                            showJsonToggle={admin}
-                            actions={
-                              admin && (
-                                <button
-                                  type="button"
-                                  onClick={() => addWebhookEvent(event.rawPayload)}
-                                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                                >
-                                  <RefreshCw className="h-3.5 w-3.5" />
-                                  Re-enviar
-                                </button>
-                              )
-                            }
-                            json={
-                              <CodeBlock
-                                label={`payload.json · ${event.id}`}
-                                actions={
-                                  <CopyButton
-                                    copied={copiedKey === event.id}
-                                    onClick={() => copy(event.id, JSON.stringify(event.rawPayload, null, 2))}
-                                  />
-                                }
-                              >
-                                {JSON.stringify(event.rawPayload, null, 2)}
-                              </CodeBlock>
-                            }
+                    <li
+                      key={event.id}
+                      className={cn('flex items-stretch', isExpanded && 'bg-accent/30', isSelected && 'bg-primary/5')}
+                    >
+                      {selecting && (
+                        <span className="flex items-center pl-4">
+                          <Checkbox
+                            checked={isSelected}
+                            onChange={() => selection.toggle(event.id)}
+                            label={`Seleccionar «${event.title}»`}
                           />
-                        </div>
+                        </span>
                       )}
+                      <div className="min-w-0 flex-1">
+                        <button
+                          type="button"
+                          aria-expanded={selecting ? undefined : isExpanded}
+                          onClick={() => {
+                            if (selecting) return selection.toggle(event.id)
+                            markAsRead(event.id)
+                            setExpandedId(isExpanded ? null : event.id)
+                          }}
+                          className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/40 md:grid-cols-[auto_minmax(0,1fr)_160px_110px_auto]"
+                        >
+                          <StatusIcon type={event.type} />
+                          <div className="min-w-0">
+                            <p className={cn('flex items-center gap-2 truncate text-sm text-foreground', !event.read && 'font-semibold')}>
+                              {!event.read && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-label="No leído" />}
+                              <span className="truncate">{event.title}</span>
+                            </p>
+                            <p className="truncate text-xs text-muted-foreground">{event.message}</p>
+                          </div>
+                          <span className="hidden truncate text-xs text-muted-foreground md:block">{event.source}</span>
+                          <span className="hidden text-right text-xs text-muted-foreground md:block" title={new Date(event.timestamp).toLocaleString()}>
+                            {relativeTime(event.timestamp)}
+                          </span>
+                          <ChevronDown
+                            className={cn(
+                              'h-4 w-4 text-muted-foreground transition-transform',
+                              isExpanded && 'rotate-180',
+                              selecting && 'invisible'
+                            )}
+                          />
+                        </button>
+
+                        {isExpanded && (
+                          <div className="px-4 pb-4 md:pl-[60px]">
+                            <EventDetails
+                              event={event}
+                              showJsonToggle={admin}
+                              actions={
+                                <>
+                                  {admin && (
+                                    <button
+                                      type="button"
+                                      onClick={() => addWebhookEvent(event.rawPayload)}
+                                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                                    >
+                                      <RefreshCw className="h-3.5 w-3.5" />
+                                      Re-enviar
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => setPendingDelete({ ids: [event.id] })}
+                                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                    Eliminar
+                                  </button>
+                                </>
+                              }
+                              json={
+                                <CodeBlock
+                                  label={`payload.json · ${event.id}`}
+                                  actions={
+                                    <CopyButton
+                                      copied={copiedKey === event.id}
+                                      onClick={() => copy(event.id, JSON.stringify(event.rawPayload, null, 2))}
+                                    />
+                                  }
+                                >
+                                  {JSON.stringify(event.rawPayload, null, 2)}
+                                </CodeBlock>
+                              }
+                            />
+                          </div>
+                        )}
+                      </div>
                     </li>
                   )
                 })}
               </ul>
             )}
           </div>
+          <ConfirmDialog
+            open={pendingDelete !== null}
+            onCancel={() => setPendingDelete(null)}
+            onConfirm={confirmDelete}
+            title={
+              pendingDelete?.all
+                ? '¿Vaciar todo el historial?'
+                : pendingTitles.length === 1
+                  ? '¿Eliminar este webhook?'
+                  : `¿Eliminar ${pendingTitles.length} webhooks?`
+            }
+            description={
+              pendingDelete?.all
+                ? `Se eliminarán los ${pendingTitles.length} webhooks del historial. No se puede deshacer.`
+                : 'Desaparecerán de tu historial. No se puede deshacer.'
+            }
+            items={pendingTitles}
+            confirmLabel={pendingDelete?.all ? 'Vaciar historial' : 'Eliminar'}
+          />
           {filteredEvents.length > 0 && (
             <p className="px-1 text-xs text-muted-foreground">
               {filteredEvents.length} de {events.length} eventos

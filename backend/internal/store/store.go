@@ -212,6 +212,13 @@ func (s *Store) RetractWebhookEvent(ctx context.Context, id, userID string, admi
 	return err
 }
 
+// DeleteWebhookEvents quita varios eventos del historial del usuario (borrado lógico).
+func (s *Store) DeleteWebhookEvents(ctx context.Context, ids []string, userID string) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `UPDATE notification_recipients SET status = 'deleted', deleted_at = now()
+		WHERE event_id = ANY($1) AND user_id = $2 AND status = 'active'`, ids, userID)
+	return tag.RowsAffected(), err
+}
+
 // ClearWebhookEvents vacía el historial del usuario (borrado lógico).
 func (s *Store) ClearWebhookEvents(ctx context.Context, userID string) (int64, error) {
 	tag, err := s.pool.Exec(ctx, `UPDATE notification_recipients SET status = 'deleted', deleted_at = now()
@@ -284,6 +291,13 @@ func (s *Store) DeleteCalendarEvent(ctx context.Context, id, userID string) erro
 		return ErrNotFound
 	}
 	return err
+}
+
+// DeleteCalendarEvents borra varios eventos del usuario (borrado lógico).
+func (s *Store) DeleteCalendarEvents(ctx context.Context, ids []string, userID string) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `UPDATE calendar_events SET status = 'deleted', deleted_at = now(), updated_at = now()
+		WHERE user_id = $2 AND id = ANY($1) AND status = 'active'`, ids, userID)
+	return tag.RowsAffected(), err
 }
 
 // ---------- Settings (por usuario) ----------

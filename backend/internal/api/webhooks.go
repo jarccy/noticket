@@ -404,6 +404,40 @@ func (s *Server) deleteWebhook(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// idsBody es el cuerpo de los borrados en lote.
+type idsBody struct {
+	IDs []string `json:"ids"`
+}
+
+// maxBatchIDs limita cuántos elementos se borran en una petición.
+const maxBatchIDs = 1000
+
+func bindIDs(c *gin.Context) ([]string, bool) {
+	var body idsBody
+	if err := c.ShouldBindJSON(&body); err != nil || len(body.IDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ids es obligatorio"})
+		return nil, false
+	}
+	if len(body.IDs) > maxBatchIDs {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "demasiados ids en una petición"})
+		return nil, false
+	}
+	return body.IDs, true
+}
+
+func (s *Server) deleteWebhooks(c *gin.Context) {
+	ids, ok := bindIDs(c)
+	if !ok {
+		return
+	}
+	n, err := s.store.DeleteWebhookEvents(c.Request.Context(), ids, currentUser(c).ID)
+	if err != nil {
+		writeStoreError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"deleted": n})
+}
+
 func (s *Server) clearWebhooks(c *gin.Context) {
 	n, err := s.store.ClearWebhookEvents(c.Request.Context(), currentUser(c).ID)
 	if err != nil {

@@ -24,6 +24,7 @@ import {
   Pencil,
   Tag,
   Radio,
+  ListChecks,
 } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
 import { Button } from '@/components/ui/button'
@@ -32,12 +33,14 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { Checkbox, SelectionBar, useSelection } from '@/components/ui/selection'
 import type { CalendarEvent, NotificationType } from '@/types'
 
 const CATEGORIES = ['Reunión', 'Despliegue', 'Mantenimiento', 'Alerta', 'Presentación', 'Recordatorio']
 
 export function CalendarView() {
-  const { calendarEvents, addCalendarEvent, updateCalendarEvent, deleteCalendarEvent } = useApp()
+  const { calendarEvents, addCalendarEvent, updateCalendarEvent, deleteCalendarEvents } = useApp()
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date())
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [showAddModal, setShowAddModal] = useState<boolean>(false)
@@ -66,6 +69,17 @@ export function CalendarView() {
   // Events for selected day
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd')
   const selectedDayEvents = calendarEvents.filter((event) => event.date === selectedDateStr)
+  const selection = useSelection(selectedDayEvents.map((e) => e.id))
+  // Ids pendientes de confirmar su borrado
+  const [pendingDelete, setPendingDelete] = useState<string[] | null>(null)
+  const pendingTitles = pendingDelete ? calendarEvents.filter((e) => pendingDelete.includes(e.id)).map((e) => e.title) : []
+
+  const confirmDelete = () => {
+    if (!pendingDelete) return
+    deleteCalendarEvents(pendingDelete)
+    setPendingDelete(null)
+    selection.stop()
+  }
 
   const editingEvent = editingId ? calendarEvents.find((c) => c.id === editingId) : undefined
   // Conserva categorías que llegaron por webhook y no están en la lista
@@ -309,13 +323,41 @@ export function CalendarView() {
                       : `${selectedDayEvents.length} evento(s) agendado(s)`}
                   </CardDescription>
                 </div>
-                {isToday(selectedDate) && (
-                  <Badge variant="default" className="text-[10px]">
-                    Hoy
-                  </Badge>
-                )}
+                <div className="flex shrink-0 items-center gap-2">
+                  {isToday(selectedDate) && (
+                    <Badge variant="default" className="text-[10px]">
+                      Hoy
+                    </Badge>
+                  )}
+                  {selectedDayEvents.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => (selection.active ? selection.stop() : selection.start())}
+                      aria-pressed={selection.active}
+                      title="Seleccionar eventos para eliminar"
+                      className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors ${
+                        selection.active ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                      }`}
+                    >
+                      <ListChecks className="h-3.5 w-3.5" />
+                      <span className="lg:sr-only">Seleccionar</span>
+                    </button>
+                  )}
+                </div>
               </div>
             </CardHeader>
+
+            {selection.active && selectedDayEvents.length > 0 && (
+              <div className="px-4 pt-3">
+                <SelectionBar
+                  compact
+                  selection={selection}
+                  total={selectedDayEvents.length}
+                  noun={['evento', 'eventos']}
+                  onDelete={() => setPendingDelete(selection.selected)}
+                />
+              </div>
+            )}
 
             <CardContent className="p-4 space-y-3 max-h-[460px] overflow-y-auto">
               {selectedDayEvents.length === 0 ? (
@@ -332,80 +374,98 @@ export function CalendarView() {
                   </Button>
                 </div>
               ) : (
-                selectedDayEvents.map((event: CalendarEvent) => (
-                  <div
-                    key={event.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => openEdit(event)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        openEdit(event)
-                      }
-                    }}
-                    title="Clic para editar"
-                    className="p-3.5 rounded-xl border border-border/80 bg-card/70 hover:border-primary/40 transition-all space-y-2 relative group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${getEventBadgeColor(
-                              event.type
-                            )}`}
-                          >
-                            {event.category}
-                          </span>
-                          {event.webhookId && (
-                            <Badge variant="outline" className="text-[9px] gap-1 px-1.5 py-0 border-primary/30 text-primary">
-                              <Radio className="h-2.5 w-2.5 animate-pulse" />
-                              Webhook
-                            </Badge>
-                          )}
+                selectedDayEvents.map((event: CalendarEvent) => {
+                  const selecting = selection.active
+                  const isSelected = selecting && selection.isSelected(event.id)
+                  const activate = () => (selecting ? selection.toggle(event.id) : openEdit(event))
+                  return (
+                    <div
+                      key={event.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-pressed={selecting ? isSelected : undefined}
+                      onClick={activate}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          activate()
+                        }
+                      }}
+                      title={selecting ? undefined : 'Clic para editar'}
+                      className={`p-3.5 rounded-xl border transition-all space-y-2 relative group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                        isSelected ? 'border-primary/50 bg-primary/5' : 'border-border/80 bg-card/70 hover:border-primary/40'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        {selecting && (
+                          <Checkbox
+                            checked={isSelected}
+                            onChange={() => selection.toggle(event.id)}
+                            label={`Seleccionar «${event.title}»`}
+                            className="mt-1"
+                          />
+                        )}
+                        <div className="min-w-0 flex-1 space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${getEventBadgeColor(
+                                event.type
+                              )}`}
+                            >
+                              {event.category}
+                            </span>
+                            {event.webhookId && (
+                              <Badge variant="outline" className="text-[9px] gap-1 px-1.5 py-0 border-primary/30 text-primary">
+                                <Radio className="h-2.5 w-2.5 animate-pulse" />
+                                Webhook
+                              </Badge>
+                            )}
+                          </div>
+                          <h4 className="text-sm font-semibold text-foreground pt-1">{event.title}</h4>
                         </div>
-                        <h4 className="text-sm font-semibold text-foreground pt-1">{event.title}</h4>
+
+                        {!selecting && (
+                          <div className="flex shrink-0 items-center">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                openEdit(event)
+                              }}
+                              className="text-muted-foreground/60 hover:text-foreground transition-colors p-1"
+                              title="Editar evento"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setPendingDelete([event.id])
+                              }}
+                              className="text-muted-foreground/60 hover:text-destructive transition-colors p-1"
+                              title="Eliminar evento"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        )}
                       </div>
 
-                      <div className="flex shrink-0 items-center">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            openEdit(event)
-                          }}
-                          className="text-muted-foreground/60 hover:text-foreground transition-colors p-1"
-                          title="Editar evento"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            deleteCalendarEvent(event.id)
-                          }}
-                          className="text-muted-foreground/60 hover:text-destructive transition-colors p-1"
-                          title="Eliminar evento"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                      {event.description && (
+                        <p className="text-xs text-muted-foreground leading-relaxed">{event.description}</p>
+                      )}
+
+                      <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1 border-t border-border/50">
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-3 w-3 text-primary" />
+                          {event.time || 'Todo el día'}
+                        </span>
+                        {event.source && <span className="font-mono text-[10px]">{event.source}</span>}
                       </div>
                     </div>
-
-                    {event.description && (
-                      <p className="text-xs text-muted-foreground leading-relaxed">{event.description}</p>
-                    )}
-
-                    <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1 border-t border-border/50">
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-3 w-3 text-primary" />
-                        {event.time || 'Todo el día'}
-                      </span>
-                      {event.source && <span className="font-mono text-[10px]">{event.source}</span>}
-                    </div>
-                  </div>
-                ))
+                  )
+                })
               )}
             </CardContent>
           </div>
@@ -418,6 +478,15 @@ export function CalendarView() {
           </div>
         </Card>
       </div>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={confirmDelete}
+        title={pendingTitles.length === 1 ? '¿Eliminar este evento?' : `¿Eliminar ${pendingTitles.length} eventos?`}
+        description="Se quitarán de tu calendario y no recibirás sus recordatorios. No se puede deshacer."
+        items={pendingTitles}
+      />
 
       {/* Modal: crear / editar evento */}
       <Dialog open={showAddModal} onOpenChange={(open) => (open ? setShowAddModal(true) : closeModal())}>
@@ -539,7 +608,7 @@ export function CalendarView() {
                   type="button"
                   variant="ghost"
                   onClick={() => {
-                    deleteCalendarEvent(editingId)
+                    setPendingDelete([editingId])
                     closeModal()
                   }}
                   className="gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
