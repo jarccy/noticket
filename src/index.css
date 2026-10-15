@@ -168,6 +168,33 @@
     outline-color: color-mix(in oklch, var(--color-ring), transparent 50%);
   }
 
+  /* Todo lo que se puede pulsar muestra la mano (Tailwind v4 deja los botones con cursor por defecto) */
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  [role='radio'],
+  [role='tab'],
+  [role='switch'],
+  [role='menuitem'],
+  [role='option'],
+  summary,
+  select,
+  label[for],
+  a[href],
+  input[type='checkbox'],
+  input[type='radio'],
+  input[type='file'],
+  input[type='color'],
+  input[type='range'],
+  input[type='date']::-webkit-calendar-picker-indicator,
+  input[type='time']::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [aria-disabled='true'] {
+    cursor: not-allowed;
+  }
+
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
