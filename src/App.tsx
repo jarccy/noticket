@@ -7,18 +7,24 @@ import { DashboardView } from '@/components/dashboard/DashboardView'
 import { CalendarView } from '@/components/calendar/CalendarView'
 import { WebhookView } from '@/components/webhooks/WebhookView'
 import { SettingsView } from '@/components/settings/SettingsView'
+import { GroupsView } from '@/components/groups/GroupsView'
+import { canManageGroups } from '@/lib/auth'
 import { WebhookSimulatorModal } from '@/components/webhooks/WebhookSimulatorModal'
 import { ToastContainer } from '@/components/ui/ToastContainer'
 
 function MainContent() {
-  const { activeTab } = useApp()
+  const { activeTab: tab, mode } = useApp()
+  const { user } = useAuth()
+  // Grupos solo para boss/admin con sesión; si no, se muestra el dashboard
+  const activeTab = tab === 'groups' && !(mode === 'cloud' && canManageGroups(user)) ? 'dashboard' : tab
 
   return (
-    <main className="h-dvh flex-1 overflow-y-auto">
-      <div key={activeTab} className="mx-auto max-w-6xl animate-fade-in px-6 py-8 md:px-10">
+    <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden lg:h-dvh">
+      <div key={activeTab} className="mx-auto max-w-6xl animate-fade-in px-4 py-6 sm:px-6 md:px-10 md:py-8">
         {activeTab === 'dashboard' && <DashboardView />}
         {activeTab === 'calendar' && <CalendarView />}
         {activeTab === 'webhooks' && <WebhookView />}
+        {activeTab === 'groups' && <GroupsView />}
         {activeTab === 'settings' && <SettingsView />}
       </div>
     </main>
@@ -47,7 +53,7 @@ function Gate() {
     <>
       {/* key: al cambiar de modo se recargan los datos desde su origen */}
       <AppProvider key={mode} mode={mode}>
-        <div className="flex h-dvh overflow-hidden bg-background text-foreground antialiased">
+        <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground antialiased lg:flex-row">
           <Sidebar />
           <MainContent />
           <WebhookSimulatorModal />

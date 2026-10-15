@@ -37,3 +37,31 @@ export interface AppSettings {
   /** Last custom color picked, kept so it survives switching to a preset */
   customAccent: string
 }
+
+export type AppTab = 'dashboard' | 'calendar' | 'webhooks' | 'groups' | 'settings'
+
+/** Rol en notiback. admin: ve todo · boss: crea grupos · user: solo lo suyo */
+export type UserType = 'admin' | 'boss' | 'user'
+
+export interface UserSummary {
+  id: string
+  email: string
+  name: string
+  avatarUrl: string | null
+  userType: UserType
+}
+
+export interface GroupMember extends UserSummary {
+  addedAt: string
+}
+
+export interface Group {
+  id: string
+  name: string
+  description: string
+  ownerId: string
+  ownerName: string
+  memberCount: number
+  createdAt: string
+  members?: GroupMember[]
+}

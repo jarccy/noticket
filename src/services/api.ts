@@ -1,4 +1,4 @@
-import type { WebhookEvent, CalendarEvent, AppSettings } from '@/types'
+import type { WebhookEvent, CalendarEvent, AppSettings, Group, GroupMember, NotificationType, UserSummary, UserType } from '@/types'
 import type { AuthUser } from '@/lib/auth'
 
 /** Backend Go (notiback) que persiste los datos en PostgreSQL. */
@@ -133,4 +133,48 @@ export const Api = {
   uploadEvent: (event: WebhookEvent) => request('/api/webhooks', { method: 'POST', body: body(event) }),
   uploadCalendarEvent: (event: CalendarEvent) =>
     request(`/api/calendar/${encodeURIComponent(event.id)}`, { method: 'PUT', body: body(event) }),
+}
+
+const enc = encodeURIComponent
+
+export interface GroupNotification {
+  title: string
+  message?: string
+  type?: NotificationType
+  date?: string
+  time?: string
+  category?: string
+  source?: string
+  groupIds: string[]
+}
+
+/** Grupos (boss/admin los gestionan; el resto ve los suyos). */
+export const GroupsApi = {
+  list: (all = false) => request<Group[]>('/api/groups' + (all ? '?scope=all' : '')),
+  get: (id: string) => request<Group>(`/api/groups/${enc(id)}`),
+  create: (name: string, description: string) =>
+    request<Group>('/api/groups', { method: 'POST', body: body({ name, description }) }),
+  update: (id: string, data: { name?: string; description?: string }) =>
+    request<Group>(`/api/groups/${enc(id)}`, { method: 'PATCH', body: body(data) }),
+  remove: (id: string) => request<void>(`/api/groups/${enc(id)}`, { method: 'DELETE' }),
+  addMembers: (id: string, members: { userIds?: string[]; emails?: string[] }) =>
+    request<{ added: number; unknownEmails: string[]; members: GroupMember[] }>(`/api/groups/${enc(id)}/members`, {
+      method: 'POST',
+      body: body(members),
+    }),
+  removeMember: (id: string, userId: string) =>
+    request<void>(`/api/groups/${enc(id)}/members/${enc(userId)}`, { method: 'DELETE' }),
+  send: (notification: GroupNotification) =>
+    request<{ event: WebhookEvent; recipients: number }>('/api/notifications', {
+      method: 'POST',
+      body: body(notification),
+    }),
+}
+
+/** Usuarios: boss/admin buscan; solo el admin cambia roles. */
+export const UsersApi = {
+  search: (q: string) => request<UserSummary[]>(`/api/users?q=${enc(q)}`),
+  list: () => request<UserSummary[]>('/api/users?limit=1000'),
+  setType: (id: string, userType: UserType) =>
+    request<{ user: UserSummary }>(`/api/users/${enc(id)}`, { method: 'PATCH', body: body({ userType }) }),
 }

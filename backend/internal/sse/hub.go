@@ -5,18 +5,18 @@ import (
 	"sync"
 )
 
-// Hub reparte mensajes a todos los clientes SSE conectados.
+// Hub reparte mensajes a los clientes SSE conectados, cada uno asociado a su usuario.
 type Hub struct {
 	mu      sync.Mutex
-	clients map[chan []byte]struct{}
+	clients map[chan []byte]string // canal → id de usuario
 }
 
-func NewHub() *Hub { return &Hub{clients: map[chan []byte]struct{}{}} }
+func NewHub() *Hub { return &Hub{clients: map[chan []byte]string{}} }
 
-func (h *Hub) Subscribe() chan []byte {
+func (h *Hub) Subscribe(userID string) chan []byte {
 	ch := make(chan []byte, 16)
 	h.mu.Lock()
-	h.clients[ch] = struct{}{}
+	h.clients[ch] = userID
 	h.mu.Unlock()
 	return ch
 }
@@ -34,15 +34,26 @@ func (h *Hub) Count() int {
 	return len(h.clients)
 }
 
-// Broadcast serializa v a JSON y lo envía; los clientes lentos pierden el mensaje.
-func (h *Hub) Broadcast(v any) {
+// SendTo serializa v a JSON y lo envía a todas las conexiones de esos usuarios;
+// los clientes lentos pierden el mensaje.
+func (h *Hub) SendTo(userIDs []string, v any) {
+	if len(userIDs) == 0 {
+		return
+	}
 	data, err := json.Marshal(v)
 	if err != nil {
 		return
 	}
+	targets := make(map[string]struct{}, len(userIDs))
+	for _, id := range userIDs {
+		targets[id] = struct{}{}
+	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	for ch := range h.clients {
+	for ch, userID := range h.clients {
+		if _, ok := targets[userID]; !ok {
+			continue
+		}
 		select {
 		case ch <- data:
 		default:

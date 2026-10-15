@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -27,16 +28,21 @@ export function Dialog({ open, onOpenChange, children }: DialogProps) {
 
   if (!open) return null
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  // Portal: an animated (transformed) ancestor would otherwise become the containing
+  // block of `position: fixed` and push the dialog off-center
+  return createPortal(
+    <div className="fixed inset-0 z-50 overflow-y-auto">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-zinc-950/50 backdrop-blur-[2px] transition-opacity animate-in fade-in"
         onClick={() => onOpenChange(false)}
       />
-      {/* Content wrapper */}
-      <div className="relative z-50 w-full max-w-lg">{children}</div>
-    </div>
+      {/* min-h-full + my-auto: centered when it fits, scrolls (without clipping the top) when it doesn't */}
+      <div className="pointer-events-none flex min-h-full items-center justify-center p-3 sm:p-4">
+        <div className="pointer-events-auto relative z-50 my-auto w-full max-w-lg">{children}</div>
+      </div>
+    </div>,
+    document.body
   )
 }
 
@@ -52,7 +58,7 @@ export function DialogContent({
   return (
     <div
       className={cn(
-        'relative w-full rounded-2xl border border-border bg-card p-6 shadow-2xl animate-in zoom-in-95 duration-200',
+        'relative w-full rounded-2xl border border-border bg-card p-5 shadow-2xl animate-in zoom-in-95 duration-200 sm:p-6',
         className
       )}
     >
@@ -83,5 +89,5 @@ export function DialogDescription({ className, ...props }: React.HTMLAttributes<
 }
 
 export function DialogFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 pt-4', className)} {...props} />
+  return <div className={cn('flex flex-col-reverse gap-2 pt-4 sm:flex-row sm:justify-end', className)} {...props} />
 }

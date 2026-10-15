@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import confetti from 'canvas-confetti'
-import type { WebhookEvent, CalendarEvent, AppSettings } from '@/types'
+import type { WebhookEvent, CalendarEvent, AppSettings, AppTab } from '@/types'
 import { Storage } from '@/services/storage'
 import { Api, API_URL, AuthApi } from '@/services/api'
 import { dispatchDesktopNotification, requestNotificationPermission } from '@/services/notifications'
@@ -24,8 +24,8 @@ interface AppContextType {
   calendarEvents: CalendarEvent[]
   settings: AppSettings
   unreadCount: number
-  activeTab: 'dashboard' | 'calendar' | 'webhooks' | 'settings'
-  setActiveTab: (tab: 'dashboard' | 'calendar' | 'webhooks' | 'settings') => void
+  activeTab: AppTab
+  setActiveTab: (tab: AppTab) => void
   addWebhookEvent: (raw: Record<string, unknown>) => void
   markAsRead: (id: string) => void
   markAllAsRead: () => void
@@ -64,7 +64,7 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
   const [pendingSync, setPendingSync] = useState(() => (cloud ? Storage.pendingCount() : 0))
   const [syncing, setSyncing] = useState(false)
   const [settings, setSettings] = useState<AppSettings>(() => Storage.getSettings())
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'calendar' | 'webhooks' | 'settings'>('dashboard')
+  const [activeTab, setActiveTab] = useState<AppTab>('dashboard')
   const [isGatewayOnline, setIsGatewayOnline] = useState(false)
   const [openSimulator, setOpenSimulator] = useState(false)
   const [toastQueue, setToastQueue] = useState<WebhookEvent[]>([])
@@ -146,15 +146,17 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
     [settings.desktopNotificationsEnabled, settings.soundEnabled, dismissToast]
   )
 
-  // Process incoming event logic
+  // Process incoming event logic. origin: 'rust' = local Tauri server or in-app ingest,
+  // 'server' = backend SSE (already stored there), 'local' = built in the browser.
   const handleIncomingEvent = useCallback(
-    (event: WebhookEvent) => {
+    (event: WebhookEvent, origin: 'rust' | 'server' | 'local' = 'local') => {
       // Add to events
       setEvents((prev) => [event, ...prev.filter((e) => e.id !== event.id)])
-      if (cloud) Api.saveEvent(event)
+      if (cloud && origin !== 'server') Api.saveEvent(event)
 
-      // Installed app with popups on: Rust already showed it (works with the window hidden)
-      if (!(isTauri() && settings.desktopNotificationsEnabled)) notify(event)
+      // Installed app with popups on: Rust already showed its own events (works with the window hidden)
+      const shownByRust = origin === 'rust' && isTauri() && settings.desktopNotificationsEnabled
+      if (!shownByRust) notify(event)
 
       // Confetti for success
       if (event.type === 'success') {
@@ -219,7 +221,7 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
     if (!isTauri()) return
     let cancelled = false
     const unlisteners: Promise<UnlistenFn>[] = [
-      listen<WebhookEvent>('webhook', (e) => handleIncomingEvent(e.payload)),
+      listen<WebhookEvent>('webhook', (e) => handleIncomingEvent(e.payload, 'rust')),
       listen<boolean>('gateway-status', (e) => setIsGatewayOnline(e.payload)),
       listen<string>('navigate', (e) => setActiveTab(e.payload as AppContextType['activeTab'])),
       listen<string>('reminder-fired', (e) => markReminded(e.payload)),
@@ -233,9 +235,20 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
     }
   }, [handleIncomingEvent])
 
-  // Browser with a session: listen to SSE `/api/events` from the Go backend (notiback)
+  // Without a session the local Tauri server rejects external webhooks: the app only
+  // creates its own notifications
   useEffect(() => {
-    if (isTauri() || !cloud) return
+    if (isTauri()) invoke('set_session_active', { active: cloud }).catch(() => {})
+  }, [cloud])
+
+  // With a session (browser or desktop): listen to SSE `/api/events` from the Go backend
+  // (notiback) — webhooks sent to this user's secret and notifications from their groups
+  useEffect(() => {
+    if (!cloud) return
+    // Desktop: the gateway indicator reflects the local Rust server, not this stream
+    const setOnline = (online: boolean) => {
+      if (!isTauri()) setIsGatewayOnline(online)
+    }
     let eventSource: EventSource | null = null
     let retryTimeout: ReturnType<typeof setTimeout>
 
@@ -244,18 +257,18 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
         eventSource = new EventSource(AuthApi.eventsUrl())
 
         eventSource.onopen = () => {
-          setIsGatewayOnline(true)
+          setOnline(true)
         }
 
         eventSource.onmessage = (e) => {
           try {
             const data = JSON.parse(e.data)
             if (data.type === 'connected') {
-              setIsGatewayOnline(true)
+              setOnline(true)
               return
             }
             if (data.id && data.title) {
-              handleIncomingEvent(data as WebhookEvent)
+              handleIncomingEvent(data as WebhookEvent, 'server')
             }
           } catch (err) {
             console.error('Error parsing SSE event', err)
@@ -263,12 +276,12 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
         }
 
         eventSource.onerror = () => {
-          setIsGatewayOnline(false)
+          setOnline(false)
           eventSource?.close()
           retryTimeout = setTimeout(connectSSE, 4000)
         }
       } catch {
-        setIsGatewayOnline(false)
+        setOnline(false)
       }
     }
 

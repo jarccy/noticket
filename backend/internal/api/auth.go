@@ -70,6 +70,14 @@ func (s *Server) requireAuth(c *gin.Context) {
 	c.Next()
 }
 
+// applyAdminEmail da el rol admin a una cuenta nueva si su correo está en ADMIN_EMAILS.
+func (s *Server) applyAdminEmail(c *gin.Context, u models.User) (models.User, error) {
+	if u.IsAdmin() || !s.cfg.IsAdminEmail(u.Email) {
+		return u, nil
+	}
+	return s.store.SetUserType(c.Request.Context(), u.ID, models.UserAdmin)
+}
+
 func bearerToken(c *gin.Context) string {
 	if h := c.GetHeader("Authorization"); strings.HasPrefix(h, "Bearer ") {
 		return strings.TrimSpace(h[len("Bearer "):])
@@ -145,6 +153,10 @@ func (s *Server) register(c *gin.Context) {
 		writeStoreError(c, err)
 		return
 	}
+	if u, err = s.applyAdminEmail(c, u); err != nil {
+		writeStoreError(c, err)
+		return
+	}
 	s.issueSession(c, http.StatusCreated, u, body.Remember)
 }
 
@@ -190,7 +202,7 @@ func (s *Server) logout(c *gin.Context) {
 }
 
 func (s *Server) me(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"user": c.MustGet(ctxUser).(models.User).Public()})
+	c.JSON(http.StatusOK, gin.H{"user": currentUser(c).Public()})
 }
 
 func (s *Server) providers(c *gin.Context) {
@@ -339,6 +351,9 @@ func (s *Server) googleCallback(c *gin.Context) {
 		return
 	}
 	u, err := s.store.UpsertGoogleUser(ctx, id.Sub, auth.NormalizeEmail(id.Email), id.Name, id.Picture)
+	if err == nil {
+		u, err = s.applyAdminEmail(c, u)
+	}
 	if err != nil {
 		log.Printf("[auth] guardando usuario de Google: %v", err)
 		fail("google")

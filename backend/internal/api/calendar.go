@@ -16,7 +16,7 @@ func (s *Server) listCalendar(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "from/to deben tener formato YYYY-MM-DD")
 		return
 	}
-	events, err := s.store.ListCalendarEvents(c.Request.Context(), from, to)
+	events, err := s.store.ListCalendarEvents(c.Request.Context(), currentUser(c).ID, scopeAll(c), from, to)
 	if err != nil {
 		writeStoreError(c, err)
 		return
@@ -73,15 +73,17 @@ func (s *Server) saveCalendar(c *gin.Context, ev models.CalendarEvent, status in
 	if ev.Category == "" {
 		ev.Category = "General"
 	}
-	if err := s.store.UpsertCalendarEvent(c.Request.Context(), ev); err != nil {
+	ev.UserID = currentUser(c).ID
+	if err := s.store.UpsertCalendarEvent(c.Request.Context(), ev, ev.UserID); err != nil {
 		writeStoreError(c, err)
 		return
 	}
 	c.JSON(status, ev)
 }
 
+// deleteCalendar hace un borrado lógico (status = 'deleted').
 func (s *Server) deleteCalendar(c *gin.Context) {
-	if err := s.store.DeleteCalendarEvent(c.Request.Context(), c.Param("id")); err != nil {
+	if err := s.store.DeleteCalendarEvent(c.Request.Context(), c.Param("id"), currentUser(c).ID); err != nil {
 		writeStoreError(c, err)
 		return
 	}

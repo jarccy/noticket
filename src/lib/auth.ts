@@ -1,6 +1,11 @@
+import type { UserType } from '@/types'
+
 // Validaciones de autenticación del lado del cliente (las mismas reglas que aplica notiback).
 
 export const PASSWORD_MIN_LENGTH = 8
+
+/** Puede crear grupos y enviar notificaciones a varios (boss o admin). */
+export const canManageGroups = (user: AuthUser | null) => user?.userType === 'boss' || user?.userType === 'admin'
 
 export interface AuthUser {
   id: string
@@ -9,6 +14,7 @@ export interface AuthUser {
   avatarUrl: string | null
   hasPassword: boolean
   hasGoogle: boolean
+  userType: UserType
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+$/

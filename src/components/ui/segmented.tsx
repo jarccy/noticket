@@ -23,7 +23,11 @@ export function Segmented<T extends string>({
     <div
       role="tablist"
       aria-label={ariaLabel}
-      className={cn('inline-flex items-center gap-0.5 rounded-lg bg-muted p-0.5', className)}
+      // Scrolls sideways instead of overflowing on narrow phones
+      className={cn(
+        'inline-flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg bg-muted p-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+        className
+      )}
     >
       {options.map((o) => {
         const active = o.id === value
@@ -35,7 +39,7 @@ export function Segmented<T extends string>({
             aria-selected={active}
             onClick={() => onChange(o.id)}
             className={cn(
-              'flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors',
+              'flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-xs font-medium transition-colors',
               active ? 'bg-card text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'
             )}
           >

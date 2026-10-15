@@ -184,6 +184,12 @@ pub fn start_server(app: AppHandle, online: Arc<AtomicBool>) {
       let path = req.url().split('?').next().unwrap_or("").to_string();
       let response = match (req.method(), path.as_str()) {
         (Method::Options, _) => json_response(204, Value::Null),
+        (Method::Post, "/webhook" | "/api/webhook") if !crate::SESSION_ACTIVE.load(Ordering::Relaxed) => {
+          json_response(
+            401,
+            json!({ "status": "error", "message": "Inicia sesión en PulseDesk para recibir webhooks" }),
+          )
+        }
         (Method::Post, "/webhook" | "/api/webhook") => {
           let mut body = String::new();
           let _ = req.as_reader().take(1_048_576).read_to_string(&mut body);

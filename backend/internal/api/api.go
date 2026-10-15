@@ -11,6 +11,7 @@ import (
 
 	"notiback/internal/auth"
 	"notiback/internal/config"
+	"notiback/internal/models"
 	"notiback/internal/sse"
 	"notiback/internal/store"
 )
@@ -48,7 +49,8 @@ func (s *Server) Router() *gin.Engine {
 
 	r.GET("/health", s.health)
 
-	// Recepción de webhooks externos (pública; la protege el secreto de Configuración)
+	// Recepción de webhooks externos: el secreto de webhook identifica al usuario que lo recibe.
+	// Sin un secreto válido (es decir, sin cuenta) no se acepta ningún webhook.
 	r.POST("/webhook", s.receiveWebhook)
 
 	public := r.Group("/api")
@@ -77,7 +79,7 @@ func (s *Server) Router() *gin.Engine {
 		// Stream en tiempo real (Server-Sent Events)
 		api.GET("/events", s.streamEvents)
 
-		// Webhooks guardados
+		// Webhooks / notificaciones del usuario (admin: ?scope=all para ver todos)
 		wh := api.Group("/webhooks")
 		wh.GET("", s.listWebhooks)
 		wh.POST("", s.saveWebhook) // la app guarda eventos que recibió por Tauri/Vite
@@ -85,19 +87,37 @@ func (s *Server) Router() *gin.Engine {
 		wh.POST("/read-all", s.markAllRead)
 		wh.GET("/:id", s.getWebhook)
 		wh.PATCH("/:id/read", s.markRead)
-		wh.DELETE("/:id", s.deleteWebhook)
+		wh.DELETE("/:id", s.deleteWebhook) // ?scope=all: retirarlo para todos (creador o admin)
 
-		// Calendario
+		// Enviar una notificación propia, a grupos (boss/admin) o a usuarios (admin)
+		api.POST("/notifications", s.sendNotification)
+
+		// Calendario del usuario (admin: ?scope=all para ver todos)
 		cal := api.Group("/calendar")
 		cal.GET("", s.listCalendar)
 		cal.POST("", s.createCalendar)
 		cal.PUT("/:id", s.updateCalendar)
 		cal.DELETE("/:id", s.deleteCalendar)
 
-		// Ajustes
+		// Ajustes del usuario
 		api.GET("/settings", s.getSettings)
 		api.PUT("/settings", s.updateSettings)
 		api.PATCH("/settings", s.updateSettings)
+		api.POST("/settings/webhook-secret", s.rotateWebhookSecret)
+
+		// Grupos: todos ven los suyos; boss y admin los crean y gestionan
+		gr := api.Group("/groups")
+		gr.GET("", s.listGroups)
+		gr.POST("", s.requireGroupManager, s.createGroup)
+		gr.GET("/:id", s.getGroup)
+		gr.PATCH("/:id", s.updateGroup)
+		gr.DELETE("/:id", s.deleteGroup)
+		gr.POST("/:id/members", s.addGroupMembers)
+		gr.DELETE("/:id/members/:userId", s.removeGroupMember)
+
+		// Usuarios: boss/admin buscan (para añadir a grupos); solo el admin cambia roles
+		api.GET("/users", s.requireGroupManager, s.listUsers)
+		api.PATCH("/users/:id", s.requireAdmin, s.updateUser)
 	}
 
 	r.NoRoute(func(c *gin.Context) {
@@ -107,9 +127,8 @@ func (s *Server) Router() *gin.Engine {
 }
 
 func (s *Server) health(c *gin.Context) {
-	unread, err := s.store.UnreadCount(c.Request.Context())
 	status := "online"
-	if err != nil {
+	if err := s.store.Ping(c.Request.Context()); err != nil {
 		status = "degraded"
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -117,7 +136,6 @@ func (s *Server) health(c *gin.Context) {
 		"server":  "Noticket Go Backend (Gin)",
 		"time":    time.Now().UTC().Format(time.RFC3339),
 		"clients": s.hub.Count(),
-		"unread":  unread,
 	})
 }
 
@@ -156,10 +174,43 @@ func writeError(c *gin.Context, status int, msg string) {
 	c.AbortWithStatusJSON(status, gin.H{"status": "error", "message": msg})
 }
 
+// currentUser es el usuario de la sesión (lo fija requireAuth).
+func currentUser(c *gin.Context) models.User {
+	return c.MustGet(ctxUser).(models.User)
+}
+
+// scopeAll: el admin puede pedir ?scope=all para ver los datos de todos los usuarios.
+func scopeAll(c *gin.Context) bool {
+	return c.Query("scope") == "all" && currentUser(c).IsAdmin()
+}
+
+func (s *Server) requireAdmin(c *gin.Context) {
+	if !currentUser(c).IsAdmin() {
+		writeError(c, http.StatusForbidden, "Solo un administrador puede hacer esto")
+		return
+	}
+	c.Next()
+}
+
+func (s *Server) requireGroupManager(c *gin.Context) {
+	if !currentUser(c).CanManageGroups() {
+		writeError(c, http.StatusForbidden, "Solo un boss o un administrador puede gestionar grupos")
+		return
+	}
+	c.Next()
+}
+
 // writeStoreError traduce errores de la capa de datos a respuestas HTTP.
 func writeStoreError(c *gin.Context, err error) {
-	if errors.Is(err, store.ErrNotFound) {
+	switch {
+	case errors.Is(err, store.ErrNotFound):
 		writeError(c, http.StatusNotFound, "Recurso no encontrado")
+		return
+	case errors.Is(err, store.ErrForbidden):
+		writeError(c, http.StatusForbidden, "No tienes permiso sobre este recurso")
+		return
+	case errors.Is(err, store.ErrConflict):
+		writeError(c, http.StatusConflict, "El recurso ya existe")
 		return
 	}
 	log.Printf("error de base de datos: %v", err)

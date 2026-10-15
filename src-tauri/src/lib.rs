@@ -23,6 +23,10 @@ struct GatewayState {
 /// throttles/suspends a hidden window's JavaScript).
 static POPUPS_ENABLED: AtomicBool = AtomicBool::new(true);
 
+/// Without a session the app only creates its own notifications: the local
+/// HTTP server rejects external webhooks until the frontend reports a login.
+pub(crate) static SESSION_ACTIVE: AtomicBool = AtomicBool::new(false);
+
 /// Show an event in the popup window. A hidden webview may be frozen, so the
 /// window is shown first; the popup then sizes itself via `layout_notifications`.
 pub(crate) fn push_notification<S: serde::Serialize + Clone>(app: &AppHandle, event: S) {
@@ -50,6 +54,11 @@ fn ingest_webhook(app: AppHandle, payload: Value) -> webhook::WebhookEvent {
   let event = webhook::parse_payload(payload);
   deliver_webhook(&app, &event);
   event
+}
+
+#[tauri::command]
+fn set_session_active(active: bool) {
+  SESSION_ACTIVE.store(active, Ordering::Relaxed);
 }
 
 #[tauri::command]
@@ -172,6 +181,7 @@ pub fn run() {
       gateway_online,
       show_notification,
       set_popups_enabled,
+      set_session_active,
       set_reminders,
       layout_notifications,
       open_main

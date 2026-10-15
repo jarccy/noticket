@@ -19,6 +19,19 @@ type Config struct {
 	GoogleClientSecret string
 
 	SMTP SMTPConfig
+
+	// Correos que reciben el rol admin al arrancar o al registrarse (ADMIN_EMAILS, separados por coma)
+	AdminEmails []string
+}
+
+func (c Config) IsAdminEmail(email string) bool {
+	email = strings.ToLower(strings.TrimSpace(email))
+	for _, e := range c.AdminEmails {
+		if e == email {
+			return true
+		}
+	}
+	return false
 }
 
 type SMTPConfig struct {
@@ -44,7 +57,15 @@ func Load() Config {
 		}
 	}
 
+	var admins []string
+	for _, e := range strings.Split(getenv("ADMIN_EMAILS", ""), ",") {
+		if e = strings.ToLower(strings.TrimSpace(e)); e != "" {
+			admins = append(admins, e)
+		}
+	}
+
 	return Config{
+		AdminEmails:        admins,
 		DatabaseURL:        getenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/dbnoticket?sslmode=disable"),
 		Port:               port,
 		CORSOrigins:        origins,

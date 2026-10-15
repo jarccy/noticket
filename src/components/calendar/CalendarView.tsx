@@ -61,6 +61,7 @@ export function CalendarView() {
   const days = eachDayOfInterval({ start: startDate, end: endDate })
 
   const weekDayNames = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+  const weekDayInitials = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
   // Events for selected day
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd')
@@ -187,12 +188,13 @@ export function CalendarView() {
       {/* Main Grid: Calendar on Left, Selected Day Details on Right */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Calendar Grid (2 cols) */}
-        <Card className="lg:col-span-2 border-border/80 shadow-sm p-4">
+        <Card className="lg:col-span-2 border-border/80 shadow-sm p-2 sm:p-4">
           {/* Weekday headers */}
           <div className="grid grid-cols-7 gap-1 text-center mb-2">
-            {weekDayNames.map((dayName) => (
+            {weekDayNames.map((dayName, i) => (
               <div key={dayName} className="text-xs font-semibold text-muted-foreground uppercase py-2">
-                {dayName}
+                <span className="sm:hidden">{weekDayInitials[i]}</span>
+                <span className="hidden sm:inline">{dayName}</span>
               </div>
             ))}
           </div>
@@ -214,7 +216,8 @@ export function CalendarView() {
                     setSelectedDate(day)
                     openCreate(dayStr)
                   }}
-                  className={`min-h-[92px] p-2 rounded-xl text-left transition-all duration-150 flex flex-col justify-between border relative group ${
+                  aria-label={`${format(day, "d 'de' MMMM", { locale: es })}${dayEvents.length ? `, ${dayEvents.length} evento(s)` : ''}`}
+                  className={`min-h-[52px] p-1 sm:min-h-[92px] sm:p-2 rounded-lg sm:rounded-xl text-left transition-all duration-150 flex flex-col justify-between border relative group ${
                     isSelected
                       ? 'border-primary ring-2 ring-primary/30 bg-primary/5 dark:bg-primary/10'
                       : isCurrentDay
@@ -224,7 +227,7 @@ export function CalendarView() {
                       : 'border-transparent bg-muted/10 opacity-35 hover:opacity-75'
                   }`}
                 >
-                  <div className="flex items-center justify-between w-full">
+                  <div className="flex items-center justify-center sm:justify-between w-full">
                     <span
                       className={`text-xs font-semibold rounded-full h-6 w-6 flex items-center justify-center ${
                         isCurrentDay
@@ -237,14 +240,36 @@ export function CalendarView() {
                       {format(day, 'd')}
                     </span>
                     {dayEvents.length > 0 && (
-                      <span className="text-[10px] font-bold text-muted-foreground bg-muted px-1.5 py-0.2 rounded-full">
+                      <span className="hidden sm:inline text-[10px] font-bold text-muted-foreground bg-muted px-1.5 py-0.2 rounded-full">
                         {dayEvents.length}
                       </span>
                     )}
                   </div>
 
+                  {/* Mobile: one dot per event (up to 3) */}
+                  {dayEvents.length > 0 && (
+                    <div className="flex w-full justify-center gap-0.5 sm:hidden" aria-hidden>
+                      {dayEvents.slice(0, 3).map((ev) => (
+                        <span
+                          key={ev.id}
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            ev.type === 'success'
+                              ? 'bg-success'
+                              : ev.type === 'warning'
+                              ? 'bg-warning'
+                              : ev.type === 'error'
+                              ? 'bg-destructive'
+                              : ev.type === 'calendar'
+                              ? 'bg-primary'
+                              : 'bg-muted-foreground'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  )}
+
                   {/* Day Events preview chips */}
-                  <div className="space-y-1 w-full mt-1.5 overflow-hidden">
+                  <div className="hidden sm:block space-y-1 w-full mt-1.5 overflow-hidden">
                     {dayEvents.slice(0, 2).map((ev) => (
                       <div
                         key={ev.id}

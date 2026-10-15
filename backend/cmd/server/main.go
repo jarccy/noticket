@@ -38,9 +38,16 @@ func main() {
 	}
 	log.Println("base de datos lista (migraciones aplicadas)")
 
+	st := store.New(pool)
+	if n, err := st.PromoteAdmins(ctx, cfg.AdminEmails); err != nil {
+		log.Fatalf("ADMIN_EMAILS: %v", err)
+	} else if n > 0 {
+		log.Printf("%d usuario(s) promovidos a admin por ADMIN_EMAILS", n)
+	}
+
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           api.New(store.New(pool), sse.NewHub(), cfg).Router(),
+		Handler:           api.New(st, sse.NewHub(), cfg).Router(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

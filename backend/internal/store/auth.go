@@ -12,11 +12,14 @@ import (
 
 var ErrEmailTaken = errors.New("correo ya registrado")
 
-const userCols = `id, email, name, password_hash, google_id, avatar_url, email_verified`
+const userCols = `id, email, name, password_hash, google_id, avatar_url, email_verified, user_type`
+
+// userColsU es userCols con el alias "u." para consultas con JOIN.
+const userColsU = `u.id, u.email, u.name, u.password_hash, u.google_id, u.avatar_url, u.email_verified, u.user_type`
 
 func scanUser(row pgx.Row) (models.User, error) {
 	var u models.User
-	err := row.Scan(&u.ID, &u.Email, &u.Name, &u.PasswordHash, &u.GoogleID, &u.AvatarURL, &u.EmailVerified)
+	err := row.Scan(&u.ID, &u.Email, &u.Name, &u.PasswordHash, &u.GoogleID, &u.AvatarURL, &u.EmailVerified, &u.UserType)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return u, ErrNotFound
 	}
@@ -71,7 +74,7 @@ func (s *Store) CreateSession(ctx context.Context, tokenHash, userID string, exp
 
 // UserBySession devuelve el usuario de una sesión vigente, o ErrNotFound.
 func (s *Store) UserBySession(ctx context.Context, tokenHash string) (models.User, error) {
-	return scanUser(s.pool.QueryRow(ctx, `SELECT u.id, u.email, u.name, u.password_hash, u.google_id, u.avatar_url, u.email_verified
+	return scanUser(s.pool.QueryRow(ctx, `SELECT `+userColsU+`
 		FROM sessions s JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = $1 AND s.expires_at > now()`, tokenHash))
 }
