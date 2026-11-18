@@ -2,7 +2,6 @@ import { useMemo, useRef, useState } from 'react'
 import {
   Activity,
   Bell,
-  BellRing,
   Check,
   Eye,
   EyeOff,
@@ -26,9 +25,10 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { CodeBlock, CopyButton, useCopy } from '@/components/ui/payload-block'
 import { StatusIcon, relativeTime } from '@/components/ui/status'
 import { NotificationPreview } from '@/components/endpoints/NotificationPreview'
+import { RepeatSetting } from '@/components/endpoints/RepeatSetting'
 import { PRESETS, endpointMark } from '@/components/endpoints/presets'
+import { validRepeatMinutes } from '@/lib/repeats'
 import { parseWebhookLocally, renderMapping } from '@/lib/webhook-parser'
-import { REPEAT_MAX, REPEAT_MIN, REPEAT_PRESETS, repeatLabel } from '@/lib/repeats'
 import { cn } from '@/lib/utils'
 import type { FieldMapping, MappedField, WebhookEndpoint } from '@/types'
 
@@ -426,7 +426,7 @@ function ConfigSection({
   }
 
   const save = async () => {
-    if (!draft.name.trim() || !validMinutes(draft.repeatMinutes)) return
+    if (!draft.name.trim() || !validRepeatMinutes(draft.repeatMinutes)) return
     setSaving(true)
     try {
       const next = await updateEndpoint(endpoint.id, {
@@ -624,7 +624,7 @@ function ConfigSection({
                 <Button
                   size="sm"
                   onClick={save}
-                  disabled={saving || !draft.name.trim() || !validMinutes(draft.repeatMinutes)}
+                  disabled={saving || !draft.name.trim() || !validRepeatMinutes(draft.repeatMinutes)}
                   className="gap-1.5"
                 >
                   {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
@@ -675,108 +675,6 @@ function OptionTile({
         <p className="truncate text-xs text-muted-foreground">{description}</p>
       </div>
       <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} />
-    </div>
-  )
-}
-
-const validMinutes = (m: number) => Number.isInteger(m) && m >= REPEAT_MIN && m <= REPEAT_MAX
-
-/** «Repetir aviso»: el aviso vuelve cada N minutos mientras no se marque como visto. */
-function RepeatSetting({
-  repeat,
-  minutes,
-  disabled,
-  onRepeat,
-  onMinutes,
-}: {
-  repeat: boolean
-  minutes: number
-  disabled: boolean
-  onRepeat: (v: boolean) => void
-  onMinutes: (v: number) => void
-}) {
-  const active = repeat && !disabled
-  const [customText, setCustomText] = useState(REPEAT_PRESETS.includes(minutes) ? '' : String(minutes))
-  const invalid = active && !validMinutes(minutes)
-
-  return (
-    <div
-      className={cn(
-        'overflow-hidden rounded-xl border transition-colors',
-        active ? 'border-primary/40' : 'border-border',
-        disabled && 'opacity-50'
-      )}
-    >
-      <div className={cn('flex items-center gap-3 p-3', active && 'bg-primary/5')}>
-        <span
-          className={cn(
-            'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
-            active ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-          )}
-        >
-          <BellRing className="h-4 w-4" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-foreground">Repetir aviso</p>
-          <p className="text-xs text-muted-foreground">
-            {disabled
-              ? 'Necesita el aviso emergente activado'
-              : active
-                ? `Vuelve a aparecer ${repeatLabel(validMinutes(minutes) ? minutes : 15)} hasta que lo marques como visto`
-                : 'El aviso aparece una sola vez'}
-          </p>
-        </div>
-        <Switch checked={repeat} onCheckedChange={onRepeat} disabled={disabled} />
-      </div>
-
-      {active && (
-        <div className="flex animate-fade-in flex-wrap items-center gap-2 border-t border-primary/20 px-3 py-2.5">
-          <span className="text-[11px] font-medium text-muted-foreground">Cada</span>
-          <div className="inline-flex items-center gap-0.5 rounded-lg bg-muted p-0.5" role="radiogroup" aria-label="Intervalo">
-            {REPEAT_PRESETS.map((m) => (
-              <button
-                key={m}
-                type="button"
-                role="radio"
-                aria-checked={minutes === m && !customText}
-                onClick={() => {
-                  onMinutes(m)
-                  setCustomText('')
-                }}
-                className={cn(
-                  'h-7 rounded-md px-2.5 text-xs font-medium tabular-nums transition-colors',
-                  minutes === m && !customText
-                    ? 'bg-card text-foreground shadow-xs'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                {m < 60 ? `${m} min` : `${m / 60} h`}
-              </button>
-            ))}
-          </div>
-          <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            o
-            <Input
-              type="number"
-              inputMode="numeric"
-              min={REPEAT_MIN}
-              max={REPEAT_MAX}
-              value={customText}
-              placeholder="otro"
-              onChange={(e) => {
-                setCustomText(e.target.value)
-                if (e.target.value === '') return
-                const n = Number(e.target.value)
-                onMinutes(Number.isFinite(n) ? Math.round(n) : 0)
-              }}
-              aria-invalid={invalid}
-              className={cn('h-7 w-20 text-xs tabular-nums', invalid && 'border-destructive focus-visible:ring-destructive')}
-            />
-            min
-          </label>
-          {invalid && <span className="text-[11px] text-destructive">Entre 1 y 1440 minutos</span>}
-        </div>
-      )}
     </div>
   )
 }

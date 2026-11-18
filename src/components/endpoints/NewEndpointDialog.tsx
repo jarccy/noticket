@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { PRESETS } from '@/components/endpoints/presets'
+import { RepeatSetting } from '@/components/endpoints/RepeatSetting'
+import { validRepeatMinutes } from '@/lib/repeats'
 import { cn } from '@/lib/utils'
 import type { WebhookEndpoint } from '@/types'
 
@@ -35,6 +37,9 @@ function NewEndpointForm({
   const { createEndpoint } = useApp()
   const [presetId, setPresetId] = useState(PRESETS[0].id)
   const [name, setName] = useState('')
+  // Repetir el aviso hasta marcarlo como visto: activado por defecto al crear
+  const [repeat, setRepeat] = useState(true)
+  const [repeatMinutes, setRepeatMinutes] = useState(15)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const preset = PRESETS.find((p) => p.id === presetId) ?? PRESETS[0]
@@ -48,7 +53,7 @@ function NewEndpointForm({
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!name.trim()) return
+    if (!name.trim() || (repeat && !validRepeatMinutes(repeatMinutes))) return
     setSaving(true)
     try {
       const created = await createEndpoint({
@@ -57,8 +62,8 @@ function NewEndpointForm({
         enabled: true,
         popup: true,
         sound: true,
-        repeat: false,
-        repeatMinutes: 15,
+        repeat,
+        repeatMinutes: validRepeatMinutes(repeatMinutes) ? repeatMinutes : 15,
         mapping: preset.mapping,
       })
       onCreated(created, preset.id)
@@ -130,13 +135,21 @@ function NewEndpointForm({
           </p>
         </div>
 
+        <RepeatSetting
+          repeat={repeat}
+          minutes={repeatMinutes}
+          disabled={false}
+          onRepeat={setRepeat}
+          onMinutes={setRepeatMinutes}
+        />
+
         {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit" disabled={saving || !name.trim()} className="gap-1.5">
+          <Button type="submit" disabled={saving || !name.trim() || (repeat && !validRepeatMinutes(repeatMinutes))} className="gap-1.5">
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
             Crear endpoint
           </Button>

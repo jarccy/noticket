@@ -76,6 +76,8 @@ export const REPEAT_PRESETS = [5, 15, 30, 60]
 export const REPEAT_MIN = 1
 export const REPEAT_MAX = 1440
 
+export const validRepeatMinutes = (m: number) => Number.isInteger(m) && m >= REPEAT_MIN && m <= REPEAT_MAX
+
 /** «cada 15 min», «cada 2 h», «cada 1 h 30 min». */
 export function repeatLabel(minutes: number): string {
   if (minutes < 60) return `cada ${minutes} min`
