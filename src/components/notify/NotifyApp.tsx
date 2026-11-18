@@ -94,7 +94,8 @@ export function NotifyApp() {
 
     const unlisten = listen<WebhookEvent>('notify:push', (e) => {
       applyStoredAppearance()
-      soundManager.play(e.payload.type)
+      // Un endpoint puede silenciar sus avisos
+      if (e.payload.sound !== false) soundManager.play(e.payload.type)
       setItems((prev) => [e.payload, ...prev.filter((p) => p.id !== e.payload.id)].slice(0, MAX_VISIBLE))
     })
 

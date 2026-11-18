@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import confetti from 'canvas-confetti'
-import type { WebhookEvent, CalendarEvent, AppSettings, AppTab } from '@/types'
+import type { WebhookEvent, WebhookEndpoint, CalendarEvent, AppSettings, AppTab } from '@/types'
 import { Storage } from '@/services/storage'
-import { Api, API_URL, AuthApi } from '@/services/api'
+import { Api, API_URL, ApiError, AuthApi, EndpointsApi, type EndpointInput } from '@/services/api'
+import { localStore, newEndpointId, newEndpointSecret } from '@/services/localStore'
 import { dispatchDesktopNotification, requestNotificationPermission } from '@/services/notifications'
 import { soundManager } from '@/services/sound'
 import { applyAccent } from '@/lib/accent'
@@ -49,7 +50,18 @@ interface AppContextType {
   pendingSync: number
   syncing: boolean
   syncLocalData: () => Promise<SyncResult>
+  /** Endpoints configurados (SQLite sin sesión, backend con sesión). */
+  endpoints: WebhookEndpoint[]
+  /** false en el navegador sin sesión: no hay servidor que reciba los webhooks. */
+  endpointsAvailable: boolean
+  createEndpoint: (data: EndpointData) => Promise<WebhookEndpoint>
+  updateEndpoint: (id: string, changes: Partial<EndpointData>) => Promise<WebhookEndpoint>
+  rotateEndpointSecret: (id: string) => Promise<WebhookEndpoint>
+  deleteEndpoint: (id: string) => Promise<void>
 }
+
+/** Lo que el usuario edita de un endpoint (id, secreto y contadores los gestiona la app). */
+export type EndpointData = Pick<WebhookEndpoint, 'name' | 'description' | 'enabled' | 'popup' | 'sound' | 'mapping'>
 
 export type DataMode = 'local' | 'cloud'
 
@@ -60,11 +72,23 @@ export interface SyncResult {
 
 const AppContext = createContext<AppContextType | undefined>(undefined)
 
+/** Escrituras locales: no bloquean la UI; si fallan queda constancia en la consola. */
+function persistLocal(p: Promise<unknown>) {
+  p.catch((err) => console.warn('[local] no se pudo guardar en el espacio local', err))
+}
+
+/** `primary` (lo cargado) más lo de `extra` que no esté en él (lo llegado mientras cargaba). */
+function mergeById<T extends { id: string }>(primary: T[], extra: T[]): T[] {
+  const ids = new Set(primary.map((x) => x.id))
+  return [...extra.filter((x) => !ids.has(x.id)), ...primary]
+}
+
 export function AppProvider({ mode, children }: { mode: DataMode; children: React.ReactNode }) {
   const cloud = mode === 'cloud'
-  const [events, setEvents] = useState<WebhookEvent[]>(() => (cloud ? [] : Storage.getEvents()))
-  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>(() => (cloud ? [] : Storage.getCalendarEvents()))
-  const [pendingSync, setPendingSync] = useState(() => (cloud ? Storage.pendingCount() : 0))
+  const [events, setEvents] = useState<WebhookEvent[]>([])
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([])
+  const [endpoints, setEndpoints] = useState<WebhookEndpoint[]>([])
+  const [pendingSync, setPendingSync] = useState(0)
   const [syncing, setSyncing] = useState(false)
   const [settings, setSettings] = useState<AppSettings>(() => Storage.getSettings())
   const [activeTab, setActiveTab] = useState<AppTab>('dashboard')
@@ -98,24 +122,40 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
       Api.getCalendarEvents(),
       Api.getSettings(),
     ])
-    setEvents(dbEvents)
+    setEvents((prev) => mergeById(dbEvents, prev))
     setCalendarEvents(dbCalendar)
     setSettings((prev) => ({ ...prev, ...dbSettings }))
+    setEndpoints(await EndpointsApi.list().catch(() => []))
   }, [])
 
+  // Initial load. Cloud: from the backend. Local: from SQLite (desktop) or localStorage (browser).
   useEffect(() => {
-    if (!cloud) return
-    loadFromServer().catch((err) => console.warn('[api] no se pudieron cargar los datos del backend', err))
+    let cancelled = false
+    const load = async () => {
+      // Desktop: first run with SQLite imports what older versions kept in localStorage
+      await localStore.init().catch((err) => console.warn('[local] no se pudo migrar el espacio local', err))
+      if (cloud) {
+        await loadFromServer().catch((err) => console.warn('[api] no se pudieron cargar los datos del backend', err))
+        const pending = await localStore.pendingCount().catch(() => 0)
+        if (!cancelled) setPendingSync(pending)
+        return
+      }
+      const [localEvents, localCalendar, localEndpoints] = await Promise.all([
+        localStore.listEvents(),
+        localStore.listCalendar(),
+        localStore.listEndpoints(),
+      ])
+      if (cancelled) return
+      // Something may have arrived while loading: keep it
+      setEvents((prev) => mergeById(localEvents, prev))
+      setCalendarEvents((prev) => mergeById(localCalendar, prev))
+      setEndpoints(localEndpoints)
+    }
+    load().catch((err) => console.warn('[local] no se pudieron cargar los datos locales', err))
+    return () => {
+      cancelled = true
+    }
   }, [cloud, loadFromServer])
-
-  // Local: everything lives in localStorage until it's synced
-  useEffect(() => {
-    if (!cloud) Storage.saveEvents(events)
-  }, [cloud, events])
-
-  useEffect(() => {
-    if (!cloud) Storage.saveCalendarEvents(calendarEvents)
-  }, [cloud, calendarEvents])
 
   useEffect(() => {
     Storage.saveSettings(settings)
@@ -140,9 +180,11 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
         dismissToast(event.id)
       }, 6000)
 
+      // An endpoint can mute its own notifications
+      const withSound = event.sound !== false
       if (settings.desktopNotificationsEnabled) {
-        dispatchDesktopNotification(event.title, event.message, event.type)
-      } else if (settings.soundEnabled) {
+        dispatchDesktopNotification(event.title, event.message, event.type, withSound)
+      } else if (settings.soundEnabled && withSound) {
         soundManager.play(event.type)
       }
     },
@@ -153,13 +195,25 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
   // 'server' = backend SSE (already stored there), 'local' = built in the browser.
   const handleIncomingEvent = useCallback(
     (event: WebhookEvent, origin: 'rust' | 'server' | 'local' = 'local') => {
-      // Add to events
+      // Add to events. Rust already stored its own events in SQLite (local mode)
       setEvents((prev) => [event, ...prev.filter((e) => e.id !== event.id)])
       if (cloud && origin !== 'server') Api.saveEvent(event)
+      if (!cloud && origin !== 'rust') persistLocal(localStore.saveEvent(event))
 
-      // Installed app with popups on: Rust already showed its own events (works with the window hidden)
+      if (event.endpointId) {
+        setEndpoints((prev) =>
+          prev.map((ep) =>
+            ep.id === event.endpointId
+              ? { ...ep, receivedCount: ep.receivedCount + 1, lastReceivedAt: event.timestamp }
+              : ep
+          )
+        )
+      }
+
+      // Installed app with popups on: Rust already showed its own events (works with the window hidden).
+      // An endpoint with popup off only records the event.
       const shownByRust = origin === 'rust' && isTauri() && settings.desktopNotificationsEnabled
-      if (!shownByRust) notify(event)
+      if (!shownByRust && event.popup !== false) notify(event)
 
       // Confetti for success
       if (event.type === 'success') {
@@ -193,6 +247,7 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
         markRemindedIfPast(newCalEvent)
         setCalendarEvents((prev) => [newCalEvent, ...prev.filter((c) => c.webhookId !== event.id)])
         if (cloud) Api.saveCalendarEvent(newCalEvent)
+        else persistLocal(localStore.saveCalendar(newCalEvent))
       }
     },
     [cloud, settings.autoCalendarSync, settings.desktopNotificationsEnabled, notify]
@@ -335,6 +390,7 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
     (id: string) => {
       setEvents((prev) => prev.map((e) => (e.id === id ? { ...e, read: true } : e)))
       if (cloud) Api.markAsRead(id)
+      else persistLocal(localStore.markRead([id]))
     },
     [cloud]
   )
@@ -342,11 +398,13 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
   const markAllAsRead = useCallback(() => {
     setEvents((prev) => prev.map((e) => ({ ...e, read: true })))
     if (cloud) Api.markAllAsRead()
+    else persistLocal(localStore.markAllRead())
   }, [cloud])
 
   const clearEvents = useCallback(() => {
     setEvents([])
     if (cloud) Api.clearEvents()
+    else persistLocal(localStore.clearEvents())
   }, [cloud])
 
   const deleteEvents = useCallback(
@@ -355,6 +413,7 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
       const set = new Set(ids)
       setEvents((prev) => prev.filter((e) => !set.has(e.id)))
       if (cloud) Api.deleteEvents(ids)
+      else persistLocal(localStore.deleteEvents(ids))
     },
     [cloud]
   )
@@ -368,6 +427,7 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
       markRemindedIfPast(newEvent)
       setCalendarEvents((prev) => [newEvent, ...prev])
       if (cloud) Api.saveCalendarEvent(newEvent)
+      else persistLocal(localStore.saveCalendar(newEvent))
     },
     [cloud]
   )
@@ -380,6 +440,7 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
       markRemindedIfPast(updated)
       setCalendarEvents((prev) => prev.map((c) => (c.id === id ? updated : c)))
       if (cloud) Api.saveCalendarEvent(updated)
+      else persistLocal(localStore.saveCalendar(updated))
     },
     [cloud, calendarEvents]
   )
@@ -388,6 +449,7 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
     (id: string) => {
       setCalendarEvents((prev) => prev.filter((c) => c.id !== id))
       if (cloud) Api.deleteCalendarEvent(id)
+      else persistLocal(localStore.deleteCalendar([id]))
     },
     [cloud]
   )
@@ -398,6 +460,7 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
       const set = new Set(ids)
       setCalendarEvents((prev) => prev.filter((c) => !set.has(c.id)))
       if (cloud) Api.deleteCalendarEvents(ids)
+      else persistLocal(localStore.deleteCalendar(ids))
     },
     [cloud]
   )
@@ -411,21 +474,45 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
   )
 
   /**
-   * Sube a la base lo creado sin sesión (webhooks primero, luego el calendario, que puede
-   * apuntar a ellos). Lo que se sube se quita del espacio local; lo que falla se queda
-   * pendiente para el siguiente intento.
+   * Sube a la base lo creado sin sesión: primero los endpoints (los webhooks pueden
+   * apuntarlos, y conservan id y secreto para que sus URLs sigan valiendo), luego los
+   * webhooks y por último el calendario (que puede apuntar a ellos). Lo que se sube se
+   * quita del espacio local; lo que falla se queda pendiente para el siguiente intento.
    */
   const syncLocalData = useCallback(async (): Promise<SyncResult> => {
     setSyncing(true)
     try {
-      const uploadedEvents = new Set<string>()
-      const uploadedCalendar = new Set<string>()
+      const uploadedEndpoints: string[] = []
+      const uploadedEvents: string[] = []
+      const uploadedCalendar: string[] = []
       let failed = 0
 
-      for (const event of Storage.getEvents()) {
+      const serverEndpoints = new Set((await EndpointsApi.list().catch(() => [])).map((ep) => ep.id))
+      for (const ep of await localStore.listEndpoints()) {
+        try {
+          if (!serverEndpoints.has(ep.id)) {
+            await EndpointsApi.create({
+              id: ep.id,
+              name: ep.name,
+              description: ep.description,
+              secret: ep.secret,
+              enabled: ep.enabled,
+              popup: ep.popup,
+              sound: ep.sound,
+              mapping: ep.mapping,
+            })
+          }
+          uploadedEndpoints.push(ep.id)
+        } catch (err) {
+          failed++
+          console.warn('[sync] endpoint no subido', ep.id, err)
+        }
+      }
+
+      for (const event of await localStore.listEvents()) {
         try {
           await Api.uploadEvent(event)
-          uploadedEvents.add(event.id)
+          uploadedEvents.push(event.id)
         } catch (err) {
           failed++
           console.warn('[sync] webhook no subido', event.id, err)
@@ -434,26 +521,95 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
 
       // Un evento de calendario solo puede enlazar un webhook que exista en la base
       const knownWebhooks = new Set([...uploadedEvents, ...events.map((e) => e.id)])
-      for (const cal of Storage.getCalendarEvents()) {
+      for (const cal of await localStore.listCalendar()) {
         const payload = cal.webhookId && !knownWebhooks.has(cal.webhookId) ? { ...cal, webhookId: undefined } : cal
         try {
           await Api.uploadCalendarEvent(payload)
-          uploadedCalendar.add(cal.id)
+          uploadedCalendar.push(cal.id)
         } catch (err) {
           failed++
           console.warn('[sync] evento de calendario no subido', cal.id, err)
         }
       }
 
-      Storage.removeEvents(uploadedEvents)
-      Storage.removeCalendarEvents(uploadedCalendar)
-      setPendingSync(Storage.pendingCount())
+      await Promise.all([
+        localStore.deleteEndpoints(uploadedEndpoints),
+        localStore.deleteEvents(uploadedEvents),
+        localStore.deleteCalendar(uploadedCalendar),
+      ])
+      setPendingSync(await localStore.pendingCount().catch(() => 0))
       await loadFromServer().catch((err) => console.warn('[sync] no se pudo recargar', err))
-      return { uploaded: uploadedEvents.size + uploadedCalendar.size, failed }
+      return { uploaded: uploadedEndpoints.length + uploadedEvents.length + uploadedCalendar.length, failed }
     } finally {
       setSyncing(false)
     }
   }, [events, loadFromServer])
+
+  // ---------- Endpoints ----------
+
+  const endpointsAvailable = cloud || localStore.supportsEndpoints
+
+  const storeEndpoint = useCallback((saved: WebhookEndpoint) => {
+    setEndpoints((prev) =>
+      prev.some((ep) => ep.id === saved.id) ? prev.map((ep) => (ep.id === saved.id ? saved : ep)) : [...prev, saved]
+    )
+    return saved
+  }, [])
+
+  const createEndpoint = useCallback(
+    async (data: EndpointData) => {
+      if (cloud) return storeEndpoint(await EndpointsApi.create(data))
+      const now = new Date().toISOString()
+      return storeEndpoint(
+        await localStore.saveEndpoint({
+          ...data,
+          id: newEndpointId(),
+          secret: newEndpointSecret(),
+          receivedCount: 0,
+          createdAt: now,
+          updatedAt: now,
+        })
+      )
+    },
+    [cloud, storeEndpoint]
+  )
+
+  const updateEndpoint = useCallback(
+    async (id: string, changes: Partial<EndpointData>) => {
+      if (cloud) return storeEndpoint(await EndpointsApi.update(id, changes as EndpointInput))
+      const current = endpoints.find((ep) => ep.id === id)
+      if (!current) throw new Error('Endpoint no encontrado')
+      return storeEndpoint(await localStore.saveEndpoint({ ...current, ...changes }))
+    },
+    [cloud, endpoints, storeEndpoint]
+  )
+
+  const rotateEndpointSecret = useCallback(
+    async (id: string) => {
+      if (cloud) return storeEndpoint(await EndpointsApi.rotateSecret(id))
+      const current = endpoints.find((ep) => ep.id === id)
+      if (!current) throw new Error('Endpoint no encontrado')
+      return storeEndpoint(await localStore.saveEndpoint({ ...current, secret: newEndpointSecret() }))
+    },
+    [cloud, endpoints, storeEndpoint]
+  )
+
+  const deleteEndpoint = useCallback(
+    async (id: string) => {
+      if (cloud) {
+        try {
+          await EndpointsApi.remove(id)
+        } catch (err) {
+          // Ya no existía en la base: basta con quitarlo de la lista
+          if (!(err instanceof ApiError && err.status === 404)) throw err
+        }
+      } else {
+        await localStore.deleteEndpoints([id])
+      }
+      setEndpoints((prev) => prev.filter((ep) => ep.id !== id))
+    },
+    [cloud]
+  )
 
   const triggerNotificationTest = useCallback(async () => {
     if (isTauri()) {
@@ -512,6 +668,12 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
         pendingSync,
         syncing,
         syncLocalData,
+        endpoints,
+        endpointsAvailable,
+        createEndpoint,
+        updateEndpoint,
+        rotateEndpointSecret,
+        deleteEndpoint,
       }}
     >
       {children}

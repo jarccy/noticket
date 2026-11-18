@@ -1,9 +1,9 @@
 import type { WebhookEvent, CalendarEvent, AppSettings } from '@/types'
 
 /**
- * Espacio local (localStorage): lo que se crea sin sesión iniciada. Al iniciar sesión,
- * el botón "Sincronizar" lo sube a la base de datos y lo quita de aquí.
- * Los ajustes se guardan siempre en local (también los usa la ventana de notificaciones).
+ * localStorage: ajustes (siempre en local; también los usa la ventana de notificaciones)
+ * y, en el navegador, el espacio local sin sesión. En la app de escritorio el espacio
+ * local vive en SQLite (ver services/localStore.ts).
  */
 const STORAGE_KEYS = {
   EVENTS: 'noticket_events',
@@ -73,6 +73,16 @@ export const Storage = {
 
   removeCalendarEvents(ids: Set<string>) {
     writeList(STORAGE_KEYS.CALENDAR, this.getCalendarEvents().filter((c) => !ids.has(c.id)))
+  },
+
+  /** Borra los webhooks y el calendario locales (tras migrarlos a SQLite). */
+  clearLocalData() {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.EVENTS)
+      localStorage.removeItem(STORAGE_KEYS.CALENDAR)
+    } catch {
+      // ignore
+    }
   },
 
   /** Cuántos elementos locales faltan por subir a la base. */

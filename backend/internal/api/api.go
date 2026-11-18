@@ -52,11 +52,14 @@ func (s *Server) Router() *gin.Engine {
 	// Recepción de webhooks externos: el secreto de webhook identifica al usuario que lo recibe.
 	// Sin un secreto válido (es decir, sin cuenta) no se acepta ningún webhook.
 	r.POST("/webhook", s.receiveWebhook)
+	// Endpoints configurados: cada uno con su secreto, mapeo de campos y preferencias
+	r.POST("/webhook/:id", s.receiveEndpointWebhook)
 
 	public := r.Group("/api")
 	{
 		public.GET("/health", s.health)
 		public.POST("/webhook", s.receiveWebhook)
+		public.POST("/webhook/:id", s.receiveEndpointWebhook)
 
 		a := public.Group("/auth")
 		a.GET("/providers", s.providers)
@@ -89,6 +92,14 @@ func (s *Server) Router() *gin.Engine {
 		wh.GET("/:id", s.getWebhook)
 		wh.PATCH("/:id/read", s.markRead)
 		wh.DELETE("/:id", s.deleteWebhook) // ?scope=all: retirarlo para todos (creador o admin)
+
+		// Endpoints de webhook configurables (cada uno con su URL /webhook/{id})
+		ep := api.Group("/endpoints")
+		ep.GET("", s.listEndpoints)
+		ep.POST("", s.createEndpoint)
+		ep.PATCH("/:id", s.updateEndpoint)
+		ep.DELETE("/:id", s.deleteEndpoint)
+		ep.POST("/:id/secret", s.rotateEndpointSecret)
 
 		// Enviar una notificación propia, a grupos (boss/admin) o a usuarios (admin)
 		api.POST("/notifications", s.sendNotification)

@@ -1,3 +1,4 @@
+mod db;
 mod reminders;
 mod webhook;
 
@@ -40,9 +41,21 @@ pub(crate) fn push_notification<S: serde::Serialize + Clone>(app: &AppHandle, ev
 
 /// Every webhook (HTTP or in-app) ends here: the main window records it and,
 /// if enabled, the popup shows it right away from Rust.
+/// In local mode it is also stored in SQLite here, so it is kept even while the
+/// main window is hidden (or its JavaScript frozen).
 pub(crate) fn deliver_webhook(app: &AppHandle, event: &webhook::WebhookEvent) {
+  if !SESSION_ACTIVE.load(Ordering::Relaxed) {
+    match serde_json::to_value(event) {
+      Ok(value) => {
+        if let Err(e) = db::insert_event(&value) {
+          log::error!("No se pudo guardar el webhook en la base local: {e}");
+        }
+      }
+      Err(e) => log::error!("No se pudo serializar el webhook: {e}"),
+    }
+  }
   let _ = app.emit_to("main", "webhook", event);
-  if POPUPS_ENABLED.load(Ordering::Relaxed) {
+  if POPUPS_ENABLED.load(Ordering::Relaxed) && event.popup != Some(false) {
     push_notification(app, event);
   }
 }
@@ -51,7 +64,7 @@ pub(crate) fn deliver_webhook(app: &AppHandle, event: &webhook::WebhookEvent) {
 /// the same parser and event path as real HTTP webhooks.
 #[tauri::command]
 fn ingest_webhook(app: AppHandle, payload: Value) -> webhook::WebhookEvent {
-  let event = webhook::parse_payload(payload);
+  let event = webhook::parse_payload(payload, None);
   deliver_webhook(&app, &event);
   event
 }
@@ -202,7 +215,21 @@ pub fn run() {
       local_webhook_urls,
       set_reminders,
       layout_notifications,
-      open_main
+      open_main,
+      db::db_list_endpoints,
+      db::db_save_endpoint,
+      db::db_delete_endpoints,
+      db::db_list_events,
+      db::db_save_event,
+      db::db_mark_read,
+      db::db_mark_all_read,
+      db::db_delete_events,
+      db::db_clear_events,
+      db::db_list_calendar,
+      db::db_save_calendar,
+      db::db_delete_calendar,
+      db::db_import_legacy,
+      db::db_pending_count
     ])
     .setup(move |app| {
       if cfg!(debug_assertions) {
@@ -213,6 +240,12 @@ pub fn run() {
         )?;
       }
       app.handle().plugin(tauri_plugin_notification::init())?;
+
+      // Local store (local mode): endpoints, webhook history and calendar
+      let db_path = app.path().app_data_dir()?.join("noticket.db");
+      if let Err(e) = db::init(&db_path) {
+        log::error!("No se pudo abrir la base local {}: {e}", db_path.display());
+      }
 
       build_tray(app)?;
 

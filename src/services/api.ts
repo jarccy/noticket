@@ -1,4 +1,14 @@
-import type { WebhookEvent, CalendarEvent, AppSettings, Group, GroupMember, NotificationType, UserSummary, UserType } from '@/types'
+import type {
+  WebhookEvent,
+  WebhookEndpoint,
+  CalendarEvent,
+  AppSettings,
+  Group,
+  GroupMember,
+  NotificationType,
+  UserSummary,
+  UserType,
+} from '@/types'
 import type { AuthUser } from '@/lib/auth'
 
 /** Backend Go (notiback) que persiste los datos en PostgreSQL. */
@@ -181,4 +191,20 @@ export const UsersApi = {
   list: () => request<UserSummary[]>('/api/users?limit=1000'),
   setType: (id: string, userType: UserType) =>
     request<{ user: UserSummary }>(`/api/users/${enc(id)}`, { method: 'PATCH', body: body({ userType }) }),
+}
+
+/** Datos editables de un endpoint (id y secreto opcionales: los envía la sincronización). */
+export type EndpointInput = Partial<
+  Pick<WebhookEndpoint, 'id' | 'name' | 'description' | 'secret' | 'enabled' | 'popup' | 'sound' | 'mapping'>
+>
+
+/** Endpoints de webhook configurables (cada uno recibe en `${API_URL}/webhook/{id}`). */
+export const EndpointsApi = {
+  list: () => request<WebhookEndpoint[]>('/api/endpoints'),
+  create: (data: EndpointInput) => request<WebhookEndpoint>('/api/endpoints', { method: 'POST', body: body(data) }),
+  update: (id: string, data: EndpointInput) =>
+    request<WebhookEndpoint>(`/api/endpoints/${enc(id)}`, { method: 'PATCH', body: body(data) }),
+  remove: (id: string) => request<void>(`/api/endpoints/${enc(id)}`, { method: 'DELETE' }),
+  rotateSecret: (id: string) => request<WebhookEndpoint>(`/api/endpoints/${enc(id)}/secret`, { method: 'POST' }),
+  url: (id: string) => `${API_URL}/webhook/${enc(id)}`,
 }

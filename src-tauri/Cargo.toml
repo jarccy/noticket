@@ -25,6 +25,7 @@ tauri = { version = "2.12.3", features = ["tray-icon"] }
 tauri-plugin-log = "2"
 tauri-plugin-notification = "2"
 tiny_http = "0.12"
+rusqlite = { version = "0.43", features = ["bundled"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-single-instance = "2"

@@ -38,10 +38,10 @@ export async function requestNotificationPermission(): Promise<boolean> {
 export async function dispatchDesktopNotification(
   title: string,
   body: string,
-  type: 'info' | 'success' | 'warning' | 'error' | 'calendar' = 'info'
+  type: 'info' | 'success' | 'warning' | 'error' | 'calendar' = 'info',
+  withSound = true
 ) {
-  // Play sound
-  soundManager.play(type)
+  if (withSound) soundManager.play(type)
 
   // 1. Try Tauri notification
   try {

@@ -32,6 +32,10 @@ func (s *Store) UserByEmail(ctx context.Context, email string) (models.User, err
 	return scanUser(s.pool.QueryRow(ctx, `SELECT `+userCols+` FROM users WHERE lower(email) = lower($1)`, email))
 }
 
+func (s *Store) UserByID(ctx context.Context, id string) (models.User, error) {
+	return scanUser(s.pool.QueryRow(ctx, `SELECT `+userCols+` FROM users WHERE id = $1`, id))
+}
+
 // CreatePasswordUser devuelve ErrEmailTaken si el correo ya existe.
 func (s *Store) CreatePasswordUser(ctx context.Context, email, name, passwordHash string) (models.User, error) {
 	u, err := scanUser(s.pool.QueryRow(ctx, `INSERT INTO users (email, name, password_hash) VALUES ($1, $2, $3)

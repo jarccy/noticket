@@ -17,6 +17,7 @@ import {
   Menu,
   X,
   Link2,
+  Plug,
   type LucideIcon,
 } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
@@ -74,7 +75,7 @@ function BrandMark({ small }: { small?: boolean }) {
 }
 
 function useNavItems() {
-  const { calendarEvents, events, unreadCount, mode } = useApp()
+  const { calendarEvents, events, unreadCount, mode, endpoints } = useApp()
   const { user } = useAuth()
   const items: { id: Tab; label: string; icon: LucideIcon; count?: number; highlight?: boolean }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -86,6 +87,7 @@ function useNavItems() {
       count: unreadCount || events.length || undefined,
       highlight: unreadCount > 0,
     },
+    { id: 'endpoints', label: 'Endpoints', icon: Plug, count: endpoints.length || undefined },
     // Solo boss y admin (con sesión) gestionan grupos
     ...(mode === 'cloud' && canManageGroups(user) ? [{ id: 'groups' as const, label: 'Grupos', icon: UsersRound }] : []),
     { id: 'settings', label: 'Configuración', icon: Settings },

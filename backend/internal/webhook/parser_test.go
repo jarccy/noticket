@@ -34,3 +34,34 @@ func TestParseInvalidDateIgnored(t *testing.T) {
 		t.Errorf("fecha/hora inválidas deberían ignorarse, got %v %v", e.Date, e.Time)
 	}
 }
+
+func TestParseWithMapping(t *testing.T) {
+	raw := map[string]any{
+		"number":       float64(7),
+		"pull_request": map[string]any{"title": "Fix login", "state": "failure"},
+		"commits":      []any{map[string]any{"message": "first"}},
+		"repository":   map[string]any{"full_name": "acme/app"},
+	}
+	e := ParseWith(raw, models.FieldMapping{
+		"title":    "PR #{{number}}: {{pull_request.title}}",
+		"message":  "commits.0.message",
+		"type":     "pull_request.state",
+		"source":   "repository.full_name",
+		"category": "missing.path",
+	})
+	if e.Title != "PR #7: Fix login" {
+		t.Errorf("title = %q", e.Title)
+	}
+	if e.Message != "first" {
+		t.Errorf("message = %q", e.Message)
+	}
+	if e.Type != models.TypeError {
+		t.Errorf("type = %q", e.Type)
+	}
+	if e.Source != "acme/app" {
+		t.Errorf("source = %q", e.Source)
+	}
+	if e.Category != nil {
+		t.Errorf("category = %v, want nil", *e.Category)
+	}
+}

@@ -60,8 +60,37 @@ type WebhookEvent struct {
 	Category   *string          `json:"category,omitempty"`
 	Read       bool             `json:"read"` // por destinatario (notification_recipients)
 	RawPayload map[string]any   `json:"rawPayload"`
-	CreatedBy  *string          `json:"createdBy,omitempty"` // quién lo envió o dueño del hook
-	GroupID    *string          `json:"groupId,omitempty"`   // grupo al que se envió
+	CreatedBy  *string          `json:"createdBy,omitempty"`  // quién lo envió o dueño del hook
+	GroupID    *string          `json:"groupId,omitempty"`    // grupo al que se envió
+	EndpointID *string          `json:"endpointId,omitempty"` // endpoint por el que llegó
+	// Preferencias del endpoint para este aviso (no se guardan: solo viajan por SSE).
+	// false desactiva el popup / el sonido; nil = según los ajustes del usuario.
+	Popup *bool `json:"popup,omitempty"`
+	Sound *bool `json:"sound,omitempty"`
+}
+
+// MappedFields son los campos de WebhookEvent que un endpoint puede mapear.
+var MappedFields = []string{"title", "message", "type", "source", "date", "time", "category"}
+
+// FieldMapping asigna a cada campo una ruta del payload ("pull_request.title",
+// "commits.0.message") o una plantilla con {{ruta}} ("PR #{{number}}: {{pull_request.title}}").
+type FieldMapping map[string]string
+
+// WebhookEndpoint es un webhook configurado por el usuario: llega a /webhook/{id}.
+type WebhookEndpoint struct {
+	ID             string       `json:"id"`
+	Name           string       `json:"name"`
+	Description    string       `json:"description"`
+	Secret         string       `json:"secret"`
+	Enabled        bool         `json:"enabled"`
+	Popup          bool         `json:"popup"`
+	Sound          bool         `json:"sound"`
+	Mapping        FieldMapping `json:"mapping"`
+	ReceivedCount  int          `json:"receivedCount"`
+	LastReceivedAt *time.Time   `json:"lastReceivedAt,omitempty"`
+	CreatedAt      time.Time    `json:"createdAt"`
+	UpdatedAt      time.Time    `json:"updatedAt"`
+	UserID         string       `json:"-"`
 }
 
 type CalendarEvent struct {

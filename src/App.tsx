@@ -6,6 +6,7 @@ import { Sidebar } from '@/components/layout/Sidebar'
 import { DashboardView } from '@/components/dashboard/DashboardView'
 import { CalendarView } from '@/components/calendar/CalendarView'
 import { WebhookView } from '@/components/webhooks/WebhookView'
+import { EndpointsView } from '@/components/endpoints/EndpointsView'
 import { SettingsView } from '@/components/settings/SettingsView'
 import { GroupsView } from '@/components/groups/GroupsView'
 import { canManageGroups } from '@/lib/auth'
@@ -24,6 +25,7 @@ function MainContent() {
         {activeTab === 'dashboard' && <DashboardView />}
         {activeTab === 'calendar' && <CalendarView />}
         {activeTab === 'webhooks' && <WebhookView />}
+        {activeTab === 'endpoints' && <EndpointsView />}
         {activeTab === 'groups' && <GroupsView />}
         {activeTab === 'settings' && <SettingsView />}
       </div>
@@ -32,7 +34,8 @@ function MainContent() {
 }
 
 /**
- * El login es opcional: sin sesión la app funciona en modo local (localStorage) y con
+ * El login es opcional: sin sesión la app funciona en modo local (SQLite en escritorio,
+ * localStorage en el navegador) y con
  * sesión usa la base. La pantalla de acceso se superpone al panel, que sigue montado
  * (y recibiendo webhooks) mientras está abierta.
  */

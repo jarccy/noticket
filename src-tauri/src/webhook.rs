@@ -1,5 +1,10 @@
 //! Embedded webhook receiver. Mirrors vite-webhook-plugin.ts so the installed
 //! app accepts the same payloads as `pnpm dev`.
+//!
+//! Routes:
+//! - `POST /webhook`: generic hook (default parsing).
+//! - `POST /webhook/<endpoint id>`: a configured endpoint (local mode only) with its
+//!   own secret, field mapping and popup/sound preferences.
 
 use std::io::Read;
 use std::net::{IpAddr, UdpSocket};
@@ -10,12 +15,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 use tauri::{AppHandle, Emitter};
-use tiny_http::{Header, Method, Response, Server};
+use tiny_http::{Header, Method, Request, Response, Server};
+
+use crate::db;
 
 pub const PORT: u16 = 3690;
 
-/// Secret that authorizes webhooks in local mode (no backend session). The
-/// frontend generates it, keeps it in localStorage and hands it over at startup.
+/// Secret that authorizes the generic `/webhook` in local mode (no backend session).
+/// The frontend generates it, keeps it in localStorage and hands it over at startup.
 static LOCAL_SECRET: Mutex<String> = Mutex::new(String::new());
 
 pub fn set_local_secret(secret: String) {
@@ -37,9 +44,13 @@ fn constant_time_eq(a: &str, b: &str) -> bool {
   a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
+fn has_header(req: &Request, name: &str) -> bool {
+  req.headers().iter().any(|h| h.field.to_string().eq_ignore_ascii_case(name))
+}
+
 /// Secret sent with the request: `x-webhook-secret`, `Authorization: Bearer` or
 /// `?secret=` (for services that can't set headers).
-fn request_secret(req: &tiny_http::Request) -> Option<String> {
+fn request_secret(req: &Request) -> Option<String> {
   for h in req.headers() {
     if h.field.equiv("x-webhook-secret") {
       return Some(h.value.as_str().trim().to_string());
@@ -57,38 +68,53 @@ fn request_secret(req: &tiny_http::Request) -> Option<String> {
     .map(str::to_string)
 }
 
-/// Local mode: this machine is always allowed; other devices need the local secret.
-fn local_mode_authorized(req: &tiny_http::Request) -> bool {
-  if req.remote_addr().is_some_and(|a| a.ip().is_loopback()) {
-    return true;
-  }
-  let expected = LOCAL_SECRET.lock().map(|s| s.clone()).unwrap_or_default();
-  !expected.is_empty() && request_secret(req).is_some_and(|got| constant_time_eq(&got, &expected))
+fn secret_matches(req: &Request, expected: &str) -> bool {
+  !expected.is_empty() && request_secret(req).is_some_and(|got| constant_time_eq(&got, expected))
+}
+
+/// A request made from this machine. Tunnels (cloudflared, ngrok…) also connect from
+/// localhost but add forwarding headers: those count as remote.
+fn is_local_request(req: &Request) -> bool {
+  req.remote_addr().is_some_and(|a| a.ip().is_loopback())
+    && !["x-forwarded-for", "forwarded", "cf-connecting-ip", "x-real-ip"].iter().any(|h| has_header(req, h))
+}
+
+/// Generic `/webhook` in local mode: this machine is allowed; anything else needs the local secret.
+fn local_mode_authorized(req: &Request) -> bool {
+  is_local_request(req) || secret_matches(req, &LOCAL_SECRET.lock().map(|s| s.clone()).unwrap_or_default())
 }
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WebhookEvent {
-  id: String,
-  title: String,
-  message: String,
+  pub id: String,
+  pub title: String,
+  pub message: String,
   #[serde(rename = "type")]
-  kind: String,
-  source: String,
-  timestamp: String,
+  pub kind: String,
+  pub source: String,
+  pub timestamp: String,
   #[serde(skip_serializing_if = "Option::is_none")]
-  date: Option<String>,
+  pub date: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
-  time: Option<String>,
+  pub time: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
-  category: Option<String>,
-  read: bool,
-  raw_payload: Value,
+  pub category: Option<String>,
+  pub read: bool,
+  pub raw_payload: Value,
+  /// Endpoint it arrived through (None for the generic `/webhook`).
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub endpoint_id: Option<String>,
+  /// Endpoint preferences: Some(false) turns the popup / sound off for this event.
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub popup: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub sound: Option<bool>,
 }
 
 static COUNTER: AtomicU64 = AtomicU64::new(0);
 
-fn now_millis() -> u128 {
+pub(crate) fn now_millis() -> u128 {
   SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0)
 }
 
@@ -107,7 +133,7 @@ fn to_base36(mut n: u128) -> String {
 }
 
 /// UTC ISO-8601 with milliseconds, same shape as JS `toISOString()`.
-fn iso_now(ms: u128) -> String {
+pub(crate) fn iso_now(ms: u128) -> String {
   let secs = (ms / 1000) as i64;
   let millis = (ms % 1000) as u32;
   let days = secs.div_euclid(86_400);
@@ -151,59 +177,158 @@ fn loose_string(v: Option<&Value>) -> String {
   }
 }
 
-pub fn parse_payload(payload: Value) -> WebhookEvent {
+// ---------- Field mapping ----------
+//
+// Each mapped field is either a path into the payload (`pull_request.title`,
+// `commits.0.message`) or a template with `{{path}}` placeholders
+// (`PR #{{number}}: {{pull_request.title}}`). Same rules as src/lib/webhook-parser.ts
+// and notiback's internal/webhook/parser.go.
+
+fn resolve_path<'a>(payload: &'a Value, path: &str) -> Option<&'a Value> {
+  path
+    .trim()
+    .split('.')
+    .filter(|s| !s.is_empty())
+    .try_fold(payload, |cur, key| match cur {
+      Value::Object(map) => map.get(key),
+      Value::Array(list) => key.parse::<usize>().ok().and_then(|i| list.get(i)),
+      _ => None,
+    })
+}
+
+fn value_text(v: &Value) -> String {
+  match v {
+    Value::String(s) => s.clone(),
+    Value::Null => String::new(),
+    other => other.to_string(),
+  }
+}
+
+fn render(spec: &str, payload: &Value) -> Option<String> {
+  let spec = spec.trim();
+  if spec.is_empty() {
+    return None;
+  }
+  let out = if spec.contains("{{") {
+    let mut out = String::new();
+    let mut rest = spec;
+    while let Some(start) = rest.find("{{") {
+      out.push_str(&rest[..start]);
+      let after = &rest[start + 2..];
+      match after.find("}}") {
+        Some(end) => {
+          out.push_str(&resolve_path(payload, &after[..end]).map(value_text).unwrap_or_default());
+          rest = &after[end + 2..];
+        }
+        None => {
+          out.push_str(&rest[start..]);
+          rest = "";
+        }
+      }
+    }
+    out.push_str(rest);
+    out
+  } else {
+    resolve_path(payload, spec).map(value_text).unwrap_or_default()
+  };
+  let out = out.trim().to_string();
+  (!out.is_empty()).then_some(out)
+}
+
+fn mapped(mapping: Option<&Map<String, Value>>, field: &str, payload: &Value) -> Option<String> {
+  mapping?.get(field).and_then(Value::as_str).and_then(|spec| render(spec, payload))
+}
+
+fn detect_kind(raw_type: &str, has_date: bool) -> &'static str {
+  let t = raw_type.to_lowercase();
+  let has = |subs: &[&str]| subs.iter().any(|s| t.contains(s));
+  if has(&["succ", "ok", "pass"]) {
+    "success"
+  } else if has(&["warn", "alert"]) {
+    "warning"
+  } else if has(&["err", "fail", "crit"]) {
+    "error"
+  } else if has(&["cal", "meet", "event"]) || has_date {
+    "calendar"
+  } else {
+    "info"
+  }
+}
+
+fn valid_date(s: &str) -> bool {
+  let b = s.as_bytes();
+  b.len() == 10
+    && b[4] == b'-'
+    && b[7] == b'-'
+    && b.iter().enumerate().all(|(i, c)| i == 4 || i == 7 || c.is_ascii_digit())
+}
+
+fn valid_time(s: &str) -> bool {
+  let parts: Vec<&str> = s.split(':').collect();
+  let num = |p: &str, max: u32| p.len() == 2 && p.parse::<u32>().is_ok_and(|n| n <= max);
+  matches!(parts.len(), 2 | 3) && num(parts[0], 23) && num(parts[1], 59) && (parts.len() == 2 || num(parts[2], 59))
+}
+
+pub fn parse_payload(payload: Value, mapping: Option<&Map<String, Value>>) -> WebhookEvent {
   let empty = Map::new();
   let raw = payload.as_object().unwrap_or(&empty);
   let ms = now_millis();
   let n = COUNTER.fetch_add(1, Ordering::Relaxed);
 
-  let title = first_str(raw, &["title", "subject", "event"])
+  let title = mapped(mapping, "title", &payload)
+    .or_else(|| first_str(raw, &["title", "subject", "event"]))
     .or_else(|| str_field(raw, "action").map(|a| format!("Evento: {a}")))
     .unwrap_or_else(|| "Notificación de Webhook".into());
 
-  let message = first_str(raw, &["message", "description", "text", "content", "details", "summary"])
+  let message = mapped(mapping, "message", &payload)
+    .or_else(|| first_str(raw, &["message", "description", "text", "content", "details", "summary"]))
     .unwrap_or_else(|| payload.to_string());
 
-  let raw_type = ["type", "level", "status", "severity"]
-    .iter()
-    .map(|k| loose_string(raw.get(*k)))
-    .find(|s| !s.is_empty())
-    .unwrap_or_default()
-    .to_lowercase();
+  let date = mapped(mapping, "date", &payload)
+    .or_else(|| str_field(raw, "date").map(str::to_string))
+    .filter(|d| valid_date(d));
+  let time = mapped(mapping, "time", &payload)
+    .or_else(|| str_field(raw, "time").map(str::to_string))
+    .filter(|t| valid_time(t));
 
-  let has_date = raw.get("date").is_some_and(|v| !v.is_null() && v != &Value::Bool(false));
-  let kind = if ["succ", "ok", "pass"].iter().any(|p| raw_type.contains(p)) {
-    "success"
-  } else if ["warn", "alert"].iter().any(|p| raw_type.contains(p)) {
-    "warning"
-  } else if ["err", "fail", "crit"].iter().any(|p| raw_type.contains(p)) {
-    "error"
-  } else if ["cal", "meet", "event"].iter().any(|p| raw_type.contains(p)) || has_date {
-    "calendar"
-  } else {
-    "info"
-  };
+  let raw_type = mapped(mapping, "type", &payload).unwrap_or_else(|| {
+    ["type", "level", "status", "severity"]
+      .iter()
+      .map(|k| loose_string(raw.get(*k)))
+      .find(|s| !s.is_empty())
+      .unwrap_or_default()
+  });
+  let has_date = date.is_some() || raw.get("date").is_some_and(|v| !v.is_null() && v != &Value::Bool(false));
 
   WebhookEvent {
     id: format!("wh_{}{}", to_base36(ms), to_base36(n as u128)),
     title,
     message,
-    kind: kind.into(),
-    source: first_str(raw, &["source", "sender", "app"]).unwrap_or_else(|| "Webhook API".into()),
+    kind: detect_kind(&raw_type, has_date).into(),
+    source: mapped(mapping, "source", &payload)
+      .or_else(|| first_str(raw, &["source", "sender", "app"]))
+      .unwrap_or_else(|| "Webhook API".into()),
     timestamp: iso_now(ms),
-    date: str_field(raw, "date").map(str::to_string),
-    time: str_field(raw, "time").map(str::to_string),
-    category: str_field(raw, "category").map(str::to_string),
+    date,
+    time,
+    category: mapped(mapping, "category", &payload).or_else(|| str_field(raw, "category").map(str::to_string)),
     read: false,
     raw_payload: payload,
+    endpoint_id: None,
+    popup: None,
+    sound: None,
   }
 }
+
+// ---------- HTTP ----------
+
+type JsonResponse = Response<std::io::Cursor<Vec<u8>>>;
 
 fn header(name: &str, value: &str) -> Header {
   Header::from_bytes(name.as_bytes(), value.as_bytes()).expect("valid header")
 }
 
-fn json_response(status: u16, body: Value) -> Response<std::io::Cursor<Vec<u8>>> {
+fn json_response(status: u16, body: Value) -> JsonResponse {
   let text = if status == 204 { String::new() } else { body.to_string() };
   Response::from_string(text)
     .with_status_code(status)
@@ -214,6 +339,79 @@ fn json_response(status: u16, body: Value) -> Response<std::io::Cursor<Vec<u8>>>
       "Access-Control-Allow-Headers",
       "Content-Type, Authorization, x-webhook-secret",
     ))
+}
+
+fn error(status: u16, message: &str) -> JsonResponse {
+  json_response(status, json!({ "status": "error", "message": message }))
+}
+
+fn read_json_body(req: &mut Request) -> Result<Value, JsonResponse> {
+  let mut body = String::new();
+  let _ = req.as_reader().take(1_048_576).read_to_string(&mut body);
+  if body.trim().is_empty() {
+    return Ok(json!({}));
+  }
+  serde_json::from_str::<Value>(&body).map_err(|e| {
+    json_response(400, json!({ "status": "error", "message": "JSON inválido", "error": e.to_string() }))
+  })
+}
+
+fn accepted(event: &WebhookEvent) -> JsonResponse {
+  json_response(200, json!({ "status": "success", "message": "Webhook recibido", "id": event.id }))
+}
+
+fn handle_generic(app: &AppHandle, req: &mut Request) -> JsonResponse {
+  if !crate::SESSION_ACTIVE.load(Ordering::Relaxed) && !local_mode_authorized(req) {
+    return error(401, "Secreto local inválido: envíalo en x-webhook-secret, Authorization: Bearer o ?secret=");
+  }
+  match read_json_body(req) {
+    Ok(payload) => {
+      let event = parse_payload(payload, None);
+      crate::deliver_webhook(app, &event);
+      accepted(&event)
+    }
+    Err(resp) => resp,
+  }
+}
+
+/// `/webhook/<id>`: a configured endpoint. Its secret is always required (also from
+/// this machine) so each integration can be revoked on its own.
+fn handle_endpoint(app: &AppHandle, req: &mut Request, id: &str) -> JsonResponse {
+  if crate::SESSION_ACTIVE.load(Ordering::Relaxed) {
+    return error(
+      409,
+      "Con la sesión iniciada los endpoints se reciben en el servidor: usa la URL que muestra la app",
+    );
+  }
+  let endpoint = match db::get_endpoint(id) {
+    Ok(Some(ep)) => ep,
+    Ok(None) => return error(404, "Endpoint no encontrado"),
+    Err(e) => {
+      log::error!("base local: {e}");
+      return error(500, "Error en la base local");
+    }
+  };
+  if !secret_matches(req, &endpoint.secret) {
+    return error(401, "Secreto inválido para este endpoint");
+  }
+  if !endpoint.enabled {
+    return error(423, "Este endpoint está pausado");
+  }
+  match read_json_body(req) {
+    Ok(payload) => {
+      let mut event = parse_payload(payload, Some(&endpoint.mapping));
+      if event.source == "Webhook API" {
+        event.source = endpoint.name.clone();
+      }
+      event.endpoint_id = Some(endpoint.id.clone());
+      event.popup = Some(endpoint.popup);
+      event.sound = Some(endpoint.sound);
+      db::touch_endpoint(&endpoint.id);
+      crate::deliver_webhook(app, &event);
+      accepted(&event)
+    }
+    Err(resp) => resp,
+  }
 }
 
 pub fn start_server(app: AppHandle, online: Arc<AtomicBool>) {
@@ -234,49 +432,59 @@ pub fn start_server(app: AppHandle, online: Arc<AtomicBool>) {
     let _ = app.emit("gateway-status", true);
 
     for mut req in server.incoming_requests() {
-      let path = req.url().split('?').next().unwrap_or("").to_string();
-      let response = match (req.method(), path.as_str()) {
-        (Method::Options, _) => json_response(204, Value::Null),
-        (Method::Post, "/webhook" | "/api/webhook")
-          if !crate::SESSION_ACTIVE.load(Ordering::Relaxed) && !local_mode_authorized(&req) =>
-        {
-          json_response(
-            401,
-            json!({
-              "status": "error",
-              "message": "Secreto local inválido: envíalo en x-webhook-secret, Authorization: Bearer o ?secret="
-            }),
-          )
-        }
-        (Method::Post, "/webhook" | "/api/webhook") => {
-          let mut body = String::new();
-          let _ = req.as_reader().take(1_048_576).read_to_string(&mut body);
-          let parsed = if body.trim().is_empty() {
-            Ok(json!({}))
-          } else {
-            serde_json::from_str::<Value>(&body)
-          };
-          match parsed {
-            Ok(payload) => {
-              let event = parse_payload(payload);
-              crate::deliver_webhook(&app, &event);
-              json_response(
-                200,
-                json!({ "status": "success", "message": "Webhook recibido", "id": event.id }),
-              )
-            }
-            Err(e) => json_response(
-              400,
-              json!({ "status": "error", "message": "JSON inválido", "error": e.to_string() }),
-            ),
-          }
-        }
-        (Method::Get, "/health" | "/api/health") => {
-          json_response(200, json!({ "status": "ok", "port": PORT }))
-        }
-        _ => json_response(404, json!({ "error": "Endpoint no encontrado. Usa POST /webhook" })),
+      let path = req.url().split('?').next().unwrap_or("").trim_end_matches('/').to_string();
+      let endpoint_id = path
+        .strip_prefix("/webhook/")
+        .or_else(|| path.strip_prefix("/api/webhook/"))
+        .filter(|id| !id.is_empty() && !id.contains('/'))
+        .map(str::to_string);
+
+      let response = match (req.method(), path.as_str(), endpoint_id) {
+        (Method::Options, _, _) => json_response(204, Value::Null),
+        (Method::Post, _, Some(id)) => handle_endpoint(&app, &mut req, &id),
+        (Method::Post, "/webhook" | "/api/webhook", None) => handle_generic(&app, &mut req),
+        (Method::Get, "/health" | "/api/health", _) => json_response(200, json!({ "status": "ok", "port": PORT })),
+        _ => json_response(404, json!({ "error": "Endpoint no encontrado. Usa POST /webhook o /webhook/<id>" })),
       };
       let _ = req.respond(response);
     }
   });
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn mapping_paths_and_templates() {
+    let payload = json!({
+      "action": "opened",
+      "number": 7,
+      "pull_request": { "title": "Fix login", "state": "failure" },
+      "commits": [{ "message": "first" }],
+      "repository": { "full_name": "acme/app" }
+    });
+    let mut mapping = Map::new();
+    mapping.insert("title".into(), json!("PR #{{number}}: {{pull_request.title}}"));
+    mapping.insert("message".into(), json!("commits.0.message"));
+    mapping.insert("type".into(), json!("pull_request.state"));
+    mapping.insert("source".into(), json!("repository.full_name"));
+    mapping.insert("category".into(), json!("missing.path"));
+
+    let e = parse_payload(payload, Some(&mapping));
+    assert_eq!(e.title, "PR #7: Fix login");
+    assert_eq!(e.message, "first");
+    assert_eq!(e.kind, "error");
+    assert_eq!(e.source, "acme/app");
+    assert_eq!(e.category, None);
+  }
+
+  #[test]
+  fn defaults_without_mapping() {
+    let e = parse_payload(json!({ "title": "Hola", "level": "warning", "date": "2026-11-18", "time": "25:00" }), None);
+    assert_eq!(e.title, "Hola");
+    assert_eq!(e.kind, "warning");
+    assert_eq!(e.date.as_deref(), Some("2026-11-18"));
+    assert_eq!(e.time, None);
+  }
 }

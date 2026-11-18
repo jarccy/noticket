@@ -43,6 +43,7 @@ Nada se borra con `DELETE` en SQL: las filas pasan a `status = 'deleted'` con `d
 | `notification_recipients` | A quién se entregó cada notificación y su estado por usuario (`read`, `status`) |
 | `calendar_events` | Calendario de cada usuario (`user_id`; el `id` es único por usuario), `webhook_id` → `webhook_events.id`, `status` |
 | `user_settings` | Ajustes por usuario, incluido su `webhook_secret` (único) |
+| `webhook_endpoints` | Endpoints configurables de cada usuario: URL `/webhook/{id}`, secreto, `mapping` (JSONB), popup/sonido, contador. `webhook_events.endpoint_id` apunta al endpoint por el que llegó |
 | `sessions` | Sesiones (SHA-256 del token, caducan a las 24 h o 30 días con "Recordarme") |
 | `password_reset_tokens` | Enlaces de restablecimiento (un solo uso, 1 hora) |
 | `oauth_states`, `login_codes` | Estado temporal del login con Google |
@@ -69,6 +70,7 @@ Los webhooks y eventos de calendario anteriores a la migración 003 no tienen du
 | GET | `/api/auth/me` 🔒 | Usuario actual (incluye `userType`) |
 | POST | `/api/auth/logout` 🔒 | Cierra la sesión |
 | POST | `/webhook`, `/api/webhook` | Recibe un webhook. `x-webhook-secret` (o `Authorization: Bearer`) = secreto del usuario que lo recibe. Un boss/admin puede incluir `"groupId"`/`"groupIds"` en el payload para repartirlo a sus grupos, y un admin `"userIds"` |
+| POST | `/webhook/{id}`, `/api/webhook/{id}` | Recibe un webhook en un **endpoint configurado**: secreto del endpoint en `x-webhook-secret`, `Authorization: Bearer` o `?secret=`. Aplica su mapeo de campos; el evento llega por SSE con `endpointId` y sus preferencias `popup`/`sound`. Pausado → 423 |
 | GET | `/api/events?access_token=` 🔒 | Stream SSE del usuario: primero `{type:"connected", history}`, luego cada `WebhookEvent` que recibe |
 | GET | `/api/webhooks?limit=&unread=true&scope=all` 🔒 | Historial del usuario (`scope=all` 🛡️: todos) |
 | POST | `/api/webhooks` 🔒 | Guarda un `WebhookEvent` ya procesado por la app (Tauri/Vite) en el historial del usuario. Idempotente por `id` |
@@ -87,6 +89,11 @@ Los webhooks y eventos de calendario anteriores a la migración 003 no tienen du
 | GET | `/api/settings` 🔒 | Tus ajustes (se crean la primera vez, con un `webhookSecret` aleatorio) |
 | PUT/PATCH | `/api/settings` 🔒 | Actualizar ajustes (parcial). `webhookSecret` mínimo 16 caracteres y único |
 | POST | `/api/settings/webhook-secret` 🔒 | Genera un secreto nuevo (el anterior deja de valer) |
+| GET | `/api/endpoints` 🔒 | Tus endpoints configurados |
+| POST | `/api/endpoints` 🔒 | Crear: `{name, description, enabled, popup, sound, mapping}`. `id` y `secret` opcionales (la app los envía al sincronizar los endpoints locales) |
+| PATCH | `/api/endpoints/{id}` 🔒 | Editar (parcial) |
+| DELETE | `/api/endpoints/{id}` 🔒 | Borrar (lógico): la URL deja de aceptar webhooks |
+| POST | `/api/endpoints/{id}/secret` 🔒 | Genera un secreto nuevo para el endpoint |
 | GET | `/api/groups?scope=all` 🔒 | Grupos que creaste o a los que perteneces (`scope=all` 🛡️: todos) |
 | POST | `/api/groups` 👑 | `{name, description}` |
 | GET | `/api/groups/{id}` 🔒 | Grupo con sus miembros (dueño, miembros o admin) |
@@ -120,3 +127,22 @@ Al enviar a varios, cada destinatario recibe la notificación sin leer (por SSE 
 - Límite de intentos en memoria para login, registro y restablecimiento.
 - **Google**: crea un ID de cliente OAuth tipo "Aplicación web" en Google Cloud Console, añade como URI de redireccionamiento `http://localhost:8080/api/auth/google/callback` y pon `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` en `.env`.
 - **Correo**: configura `SMTP_*` en `.env`. Sin `SMTP_HOST`, el enlace para restablecer la contraseña se imprime en el log del servidor.
+
+## Mapeo de campos de un endpoint
+
+`mapping` asigna a cada campo del evento (`title`, `message`, `type`, `source`, `date`, `time`, `category`) una **ruta** del payload o una **plantilla**:
+
+```json
+{
+  "title": "PR #{{number}}: {{pull_request.title}}",
+  "message": "pull_request.body",
+  "type": "pull_request.state",
+  "source": "repository.full_name"
+}
+```
+
+- Ruta: claves separadas por puntos; los índices de lista son números (`commits.0.message`).
+- Plantilla: cualquier texto con `{{ruta}}`.
+- Si el campo no está mapeado o sale vacío, se usa la detección automática de siempre. `type` pasa por la misma detección (`failure` → `error`, `ok` → `success`…).
+
+Las mismas reglas se aplican en la app de escritorio sin sesión (`src-tauri/src/webhook.rs`) y en la vista previa del frontend (`src/lib/webhook-parser.ts`).

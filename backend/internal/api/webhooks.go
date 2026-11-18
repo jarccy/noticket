@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"errors"
-	"io"
 	"log"
 	"net/http"
 	"slices"
@@ -137,19 +136,9 @@ func (s *Server) receiveWebhook(c *gin.Context) {
 		return
 	}
 
-	body, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, maxBody))
-	if err != nil {
-		writeError(c, http.StatusRequestEntityTooLarge, "Payload demasiado grande")
+	raw, ok := readPayload(c)
+	if !ok {
 		return
-	}
-	raw := map[string]any{}
-	if strings.TrimSpace(string(body)) != "" {
-		if err := json.Unmarshal(body, &raw); err != nil {
-			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
-				"status": "error", "message": "JSON inválido o malformado", "error": err.Error(),
-			})
-			return
-		}
 	}
 
 	d, groupID, err := s.resolveTargets(c, owner, stringList(raw, "groupId", "groupIds"), stringList(raw, "userId", "userIds"))
@@ -258,6 +247,18 @@ func (s *Server) saveWebhook(c *gin.Context) {
 	e.Date = webhook.ValidDate(e.Date)
 	e.Time = webhook.ValidTime(e.Time)
 	e.GroupID = nil
+	e.Popup, e.Sound = nil, nil
+	// Solo se enlaza un endpoint del propio usuario (p. ej. uno sincronizado desde el modo local)
+	if e.EndpointID != nil {
+		owns, err := s.store.OwnsEndpoint(c.Request.Context(), *e.EndpointID, currentUser(c).ID)
+		if err != nil {
+			writeStoreError(c, err)
+			return
+		}
+		if !owns {
+			e.EndpointID = nil
+		}
+	}
 
 	if err := s.store.SaveOwnWebhookEvent(c.Request.Context(), e, currentUser(c).ID); err != nil {
 		writeStoreError(c, err)

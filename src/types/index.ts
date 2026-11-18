@@ -12,6 +12,36 @@ export interface WebhookEvent {
   category?: string
   read: boolean
   rawPayload: Record<string, unknown>
+  /** Endpoint configurado por el que llegó (ausente: /webhook genérico o creado en la app). */
+  endpointId?: string
+  /** Preferencias del endpoint para este aviso: false desactiva el popup / el sonido. */
+  popup?: boolean
+  sound?: boolean
+}
+
+/** Campos del evento que un endpoint puede mapear desde el payload. */
+export type MappedField = 'title' | 'message' | 'type' | 'source' | 'date' | 'time' | 'category'
+
+/**
+ * Cada campo es una ruta del payload (`pull_request.title`, `commits.0.message`) o una
+ * plantilla con `{{ruta}}` (`PR #{{number}}: {{pull_request.title}}`).
+ */
+export type FieldMapping = Partial<Record<MappedField, string>>
+
+/** Webhook configurado: recibe en `/webhook/{id}` con su secreto, mapeo y preferencias. */
+export interface WebhookEndpoint {
+  id: string
+  name: string
+  description: string
+  secret: string
+  enabled: boolean
+  popup: boolean
+  sound: boolean
+  mapping: FieldMapping
+  receivedCount: number
+  lastReceivedAt?: string
+  createdAt: string
+  updatedAt: string
 }
 
 export interface CalendarEvent {
@@ -38,7 +68,7 @@ export interface AppSettings {
   customAccent: string
 }
 
-export type AppTab = 'dashboard' | 'calendar' | 'webhooks' | 'groups' | 'settings'
+export type AppTab = 'dashboard' | 'calendar' | 'webhooks' | 'endpoints' | 'groups' | 'settings'
 
 /** Rol en notiback. admin: ve todo · boss: crea grupos · user: solo lo suyo */
 export type UserType = 'admin' | 'boss' | 'user'

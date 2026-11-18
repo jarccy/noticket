@@ -37,13 +37,13 @@ func isUniqueViolation(err error) bool {
 
 const webhookCols = `e.id, e.title, e.message, e.type, e.source, e."timestamp",
 	to_char(e.event_date, 'YYYY-MM-DD'), to_char(e.event_time, 'HH24:MI'),
-	e.category, e.raw_payload, e.created_by, e.group_id`
+	e.category, e.raw_payload, e.created_by, e.group_id, e.endpoint_id`
 
 // scanWebhook espera webhookCols seguidas de la columna "read".
 func scanWebhook(row pgx.Row) (models.WebhookEvent, error) {
 	var e models.WebhookEvent
 	err := row.Scan(&e.ID, &e.Title, &e.Message, &e.Type, &e.Source, &e.Timestamp,
-		&e.Date, &e.Time, &e.Category, &e.RawPayload, &e.CreatedBy, &e.GroupID, &e.Read)
+		&e.Date, &e.Time, &e.Category, &e.RawPayload, &e.CreatedBy, &e.GroupID, &e.EndpointID, &e.Read)
 	if e.RawPayload == nil {
 		e.RawPayload = map[string]any{}
 	}
@@ -71,11 +71,11 @@ func collectWebhooks(rows pgx.Rows, err error) ([]models.WebhookEvent, error) {
 
 func insertEvent(ctx context.Context, tx pgx.Tx, e models.WebhookEvent) (bool, error) {
 	tag, err := tx.Exec(ctx, `INSERT INTO webhook_events
-		(id, title, message, type, source, "timestamp", event_date, event_time, category, raw_payload, created_by, group_id)
-		VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7::text, '')::date, NULLIF($8::text, '')::time, $9, $10, $11, $12)
+		(id, title, message, type, source, "timestamp", event_date, event_time, category, raw_payload, created_by, group_id, endpoint_id)
+		VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7::text, '')::date, NULLIF($8::text, '')::time, $9, $10, $11, $12, $13)
 		ON CONFLICT (id) DO NOTHING`,
 		e.ID, e.Title, e.Message, e.Type, e.Source, e.Timestamp,
-		deref(e.Date), deref(e.Time), e.Category, e.RawPayload, e.CreatedBy, e.GroupID)
+		deref(e.Date), deref(e.Time), e.Category, e.RawPayload, e.CreatedBy, e.GroupID, e.EndpointID)
 	return tag.RowsAffected() == 1, err
 }
 

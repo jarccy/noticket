@@ -7,9 +7,11 @@ interface DialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   children: React.ReactNode
+  /** Clases del contenedor (p. ej. un ancho máximo mayor que max-w-lg). */
+  className?: string
 }
 
-export function Dialog({ open, onOpenChange, children }: DialogProps) {
+export function Dialog({ open, onOpenChange, children, className }: DialogProps) {
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onOpenChange(false)
@@ -39,7 +41,7 @@ export function Dialog({ open, onOpenChange, children }: DialogProps) {
       />
       {/* min-h-full + my-auto: centered when it fits, scrolls (without clipping the top) when it doesn't */}
       <div className="pointer-events-none flex min-h-full items-center justify-center p-3 sm:p-4">
-        <div className="pointer-events-auto relative z-50 my-auto w-full max-w-lg">{children}</div>
+        <div className={cn('pointer-events-auto relative z-50 my-auto w-full max-w-lg', className)}>{children}</div>
       </div>
     </div>,
     document.body
