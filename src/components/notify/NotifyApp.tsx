@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { X, CheckCircle2, AlertTriangle, XCircle, Calendar, Webhook, Radio } from 'lucide-react'
+import { X, CheckCircle2, AlertTriangle, XCircle, Calendar, Webhook, Radio, Eye, Repeat } from 'lucide-react'
 import type { NotificationType, WebhookEvent } from '@/types'
 import { Storage } from '@/services/storage'
 import { soundManager } from '@/services/sound'
@@ -26,14 +26,19 @@ function applyStoredAppearance() {
   soundManager.setEnabled(settings.soundEnabled)
 }
 
+/** Los recordatorios del calendario y la prueba no son webhooks del historial. */
+const canMarkSeen = (event: WebhookEvent) => !event.id.startsWith('rem_') && !event.id.startsWith('test_')
+
 function NotificationCard({
   event,
   onDismiss,
   onOpen,
+  onSeen,
 }: {
   event: WebhookEvent
   onDismiss: () => void
   onOpen: () => void
+  onSeen: () => void
 }) {
   const style = typeStyles[event.type] ?? typeStyles.info
   const Icon = style.icon
@@ -46,7 +51,11 @@ function NotificationCard({
     >
       <span className={`w-1 shrink-0 ${style.stripe}`} aria-hidden />
 
-      <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 gap-3 p-3.5 pr-9 text-left cursor-pointer">
+      <button
+        type="button"
+        onClick={onOpen}
+        className={`flex min-w-0 flex-1 gap-3 p-3.5 pr-9 text-left cursor-pointer ${canMarkSeen(event) ? 'pb-8' : ''}`}
+      >
         <Icon className={`mt-0.5 h-5 w-5 shrink-0 ${style.text}`} />
         <div className="min-w-0 flex-1 space-y-0.5">
           <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -59,8 +68,26 @@ function NotificationCard({
           </div>
           <p className="truncate text-sm font-semibold leading-snug">{event.title}</p>
           <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">{event.message}</p>
+          {event.repeatCount && (
+            <p className="flex items-center gap-1 pt-0.5 text-[11px] font-medium text-warning">
+              <Repeat className="h-3 w-3" />
+              Sin ver · aviso n.º {event.repeatCount + 1}
+            </p>
+          )}
         </div>
       </button>
+
+      {canMarkSeen(event) && (
+        <button
+          type="button"
+          onClick={onSeen}
+          title="Marcar como visto: deja de repetirse"
+          className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-md border border-border bg-card px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <Eye className="h-3 w-3" />
+          Visto
+        </button>
+      )}
 
       <button
         type="button"
@@ -123,6 +150,15 @@ export function NotifyApp() {
     setItems((prev) => prev.filter((p) => p.id !== id))
   }, [])
 
+  // Marca el webhook como leído y detiene sus repeticiones (Rust avisa a la ventana principal)
+  const seen = useCallback(
+    (id: string) => {
+      invoke('mark_seen', { id }).catch(() => {})
+      dismiss(id)
+    },
+    [dismiss]
+  )
+
   const open = useCallback(
     (event: WebhookEvent) => {
       const tab = event.date || event.type === 'calendar' ? 'calendar' : 'webhooks'
@@ -140,6 +176,7 @@ export function NotifyApp() {
           event={item}
           onDismiss={() => dismiss(item.id)}
           onOpen={() => open(item)}
+          onSeen={() => seen(item.id)}
         />
       ))}
     </div>

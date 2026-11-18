@@ -15,7 +15,17 @@ use crate::webhook::{iso_now, now_millis};
 
 static DB: OnceLock<Mutex<Connection>> = OnceLock::new();
 
-const SCHEMA_VERSION: i32 = 1;
+const SCHEMA_VERSION: i32 = 2;
+
+/// v2: repeat a notification every N minutes until it is marked as seen.
+const MIGRATION_V2: &str = "
+ALTER TABLE endpoints ADD COLUMN repeat INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE endpoints ADD COLUMN repeat_minutes INTEGER NOT NULL DEFAULT 15;
+";
+
+/// Bounds for the repeat interval, in minutes (same as notiback).
+pub const REPEAT_MIN: i64 = 1;
+pub const REPEAT_MAX: i64 = 1440;
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS endpoints (
@@ -62,7 +72,12 @@ pub fn init(path: &std::path::Path) -> Result<(), String> {
     .map_err(|e| e.to_string())?;
   let version: i32 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).map_err(|e| e.to_string())?;
   if version < SCHEMA_VERSION {
-    conn.execute_batch(SCHEMA).map_err(|e| e.to_string())?;
+    if version < 1 {
+      conn.execute_batch(SCHEMA).map_err(|e| e.to_string())?;
+    }
+    if version < 2 {
+      conn.execute_batch(MIGRATION_V2).map_err(|e| e.to_string())?;
+    }
     conn
       .execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))
       .map_err(|e| e.to_string())?;
@@ -96,6 +111,11 @@ pub struct Endpoint {
   pub sound: bool,
   #[serde(default)]
   pub mapping: Map<String, Value>,
+  /// Show the notification again every `repeat_minutes` until it is marked as seen.
+  #[serde(default)]
+  pub repeat: bool,
+  #[serde(default = "default_repeat_minutes")]
+  pub repeat_minutes: i64,
   #[serde(default)]
   pub received_count: i64,
   #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -106,8 +126,11 @@ pub struct Endpoint {
   pub updated_at: String,
 }
 
-const ENDPOINT_COLS: &str =
-  "id, name, description, secret, enabled, popup, sound, mapping, received_count, last_received_at, created_at, updated_at";
+fn default_repeat_minutes() -> i64 {
+  15
+}
+
+const ENDPOINT_COLS: &str = "id, name, description, secret, enabled, popup, sound, mapping, received_count,    last_received_at, created_at, updated_at, repeat, repeat_minutes";
 
 fn row_endpoint(r: &rusqlite::Row) -> rusqlite::Result<Endpoint> {
   let mapping: String = r.get(7)?;
@@ -124,6 +147,8 @@ fn row_endpoint(r: &rusqlite::Row) -> rusqlite::Result<Endpoint> {
     last_received_at: r.get(9)?,
     created_at: r.get(10)?,
     updated_at: r.get(11)?,
+    repeat: r.get(12)?,
+    repeat_minutes: r.get(13)?,
   })
 }
 
@@ -164,16 +189,21 @@ pub fn db_save_endpoint(endpoint: Endpoint) -> Result<Endpoint, String> {
   if endpoint.secret.len() < 16 {
     return Err("el secreto debe tener al menos 16 caracteres".into());
   }
+  if !(REPEAT_MIN..=REPEAT_MAX).contains(&endpoint.repeat_minutes) {
+    return Err(format!("el intervalo debe estar entre {REPEAT_MIN} y {REPEAT_MAX} minutos"));
+  }
   let ts = now();
   let mapping = Value::Object(endpoint.mapping.clone()).to_string();
   conn()?
     .execute(
-      "INSERT INTO endpoints (id, name, description, secret, enabled, popup, sound, mapping, created_at, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)
+      "INSERT INTO endpoints (id, name, description, secret, enabled, popup, sound, mapping, created_at, updated_at,
+         repeat, repeat_minutes)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9, ?10, ?11)
        ON CONFLICT (id) DO UPDATE SET
          name = excluded.name, description = excluded.description, secret = excluded.secret,
          enabled = excluded.enabled, popup = excluded.popup, sound = excluded.sound,
-         mapping = excluded.mapping, updated_at = excluded.updated_at",
+         mapping = excluded.mapping, updated_at = excluded.updated_at,
+         repeat = excluded.repeat, repeat_minutes = excluded.repeat_minutes",
       params![
         endpoint.id,
         name,
@@ -183,7 +213,9 @@ pub fn db_save_endpoint(endpoint: Endpoint) -> Result<Endpoint, String> {
         endpoint.popup,
         endpoint.sound,
         mapping,
-        ts
+        ts,
+        endpoint.repeat,
+        endpoint.repeat_minutes
       ],
     )
     .map_err(|e| e.to_string())?;
@@ -405,6 +437,8 @@ mod tests {
       popup: false,
       sound: true,
       mapping: json!({ "title": "pull_request.title" }).as_object().unwrap().clone(),
+      repeat: true,
+      repeat_minutes: 30,
       received_count: 0,
       last_received_at: None,
       created_at: String::new(),
@@ -418,6 +452,8 @@ mod tests {
     assert_eq!(updated.received_count, 1);
     assert_eq!(updated.created_at, saved.created_at);
     assert!(!updated.popup);
+    assert!(updated.repeat);
+    assert_eq!(updated.repeat_minutes, 30);
     assert_eq!(updated.mapping.get("title").and_then(Value::as_str), Some("pull_request.title"));
 
     // Short secrets are rejected

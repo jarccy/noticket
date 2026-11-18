@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import { BellOff, Database, Plus, Server, VolumeX, Webhook } from 'lucide-react'
+import { BellOff, Database, Plus, Repeat, Server, VolumeX, Webhook } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
 import { PageHeader } from '@/components/ui/page-header'
 import { Button } from '@/components/ui/button'
@@ -147,6 +147,7 @@ export function EndpointsView() {
                         <span className="flex shrink-0 items-center gap-1 text-muted-foreground/70">
                           {!ep.popup && <BellOff className="h-3.5 w-3.5" aria-label="Sin aviso" />}
                           {ep.popup && !ep.sound && <VolumeX className="h-3.5 w-3.5" aria-label="Sin sonido" />}
+                          {ep.popup && ep.repeat && <Repeat className="h-3.5 w-3.5" aria-label="Repite el aviso" />}
                         </span>
                       </button>
                     </li>

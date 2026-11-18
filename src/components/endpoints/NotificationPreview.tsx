@@ -1,4 +1,5 @@
-import { AlertTriangle, Calendar, CheckCircle2, Radio, Webhook, XCircle, BellOff, VolumeX } from 'lucide-react'
+import { AlertTriangle, Calendar, CheckCircle2, Radio, Webhook, XCircle, BellOff, VolumeX, Repeat } from 'lucide-react'
+import { repeatLabel } from '@/lib/repeats'
 import type { NotificationType, WebhookEvent } from '@/types'
 import { STATUS } from '@/components/ui/status'
 import { cn } from '@/lib/utils'
@@ -18,12 +19,15 @@ export function NotificationPreview({
   source,
   popup,
   sound,
+  repeatMinutes,
 }: {
   event: WebhookEvent
   /** Origen mostrado (el nombre del endpoint si el payload no trae uno). */
   source: string
   popup: boolean
   sound: boolean
+  /** Si se repite hasta marcarlo como visto. */
+  repeatMinutes?: number
 }) {
   const style = typeStyles[event.type] ?? typeStyles.info
   const Icon = style.icon
@@ -70,6 +74,12 @@ export function NotificationPreview({
           <Chip muted>
             <BellOff className="h-3 w-3" />
             Solo historial
+          </Chip>
+        )}
+        {!!repeatMinutes && popup && (
+          <Chip>
+            <Repeat className="h-3 w-3" />
+            Se repite {repeatLabel(repeatMinutes)}
           </Chip>
         )}
         {!sound && popup && (

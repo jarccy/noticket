@@ -1,5 +1,6 @@
 mod db;
 mod reminders;
+mod repeats;
 mod webhook;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -23,6 +24,10 @@ struct GatewayState {
 /// so they still appear while the main window is hidden in the tray (WebView2
 /// throttles/suspends a hidden window's JavaScript).
 static POPUPS_ENABLED: AtomicBool = AtomicBool::new(true);
+
+pub(crate) fn popups_enabled() -> bool {
+  POPUPS_ENABLED.load(Ordering::Relaxed)
+}
 
 /// Without a session the local HTTP server works in "local mode": it accepts
 /// webhooks from this machine, and from other devices only with the local secret.
@@ -99,6 +104,25 @@ fn set_popups_enabled(enabled: bool) {
 #[tauri::command]
 fn set_reminders(state: State<reminders::SharedReminders>, reminders: Vec<reminders::Reminder>) {
   state.replace(reminders);
+}
+
+/// The frontend sends the unseen events whose endpoint repeats its notification.
+#[tauri::command]
+fn set_repeats(state: State<repeats::SharedRepeats>, repeats: Vec<repeats::Repeat>) {
+  state.replace(repeats);
+}
+
+/// "Marcar como visto" (from the popup or the app): stops the repetitions right away.
+/// In local mode it is also stored here, as the main window may be frozen in the tray.
+#[tauri::command]
+fn mark_seen(app: AppHandle, state: State<repeats::SharedRepeats>, id: String) {
+  state.remove(&id);
+  if !SESSION_ACTIVE.load(Ordering::Relaxed) {
+    if let Err(e) = db::db_mark_read(vec![id.clone()]) {
+      log::error!("No se pudo marcar como visto en la base local: {e}");
+    }
+  }
+  let _ = app.emit_to("main", "event-seen", id);
 }
 
 #[tauri::command]
@@ -192,6 +216,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
 pub fn run() {
   let online = Arc::new(AtomicBool::new(false));
   let reminder_state: reminders::SharedReminders = Default::default();
+  let repeat_state: repeats::SharedRepeats = Default::default();
 
   let mut builder = tauri::Builder::default();
   // Must be the first plugin: a second launch (e.g. from the Start menu while the app
@@ -205,6 +230,7 @@ pub fn run() {
   builder
     .manage(GatewayState { online: online.clone() })
     .manage(reminder_state.clone())
+    .manage(repeat_state.clone())
     .invoke_handler(tauri::generate_handler![
       ingest_webhook,
       gateway_online,
@@ -214,6 +240,8 @@ pub fn run() {
       set_local_webhook_secret,
       local_webhook_urls,
       set_reminders,
+      set_repeats,
+      mark_seen,
       layout_notifications,
       open_main,
       db::db_list_endpoints,
@@ -274,6 +302,7 @@ pub fn run() {
 
       webhook::start_server(app.handle().clone(), online.clone());
       reminders::start(app.handle().clone(), reminder_state.clone());
+      repeats::start(app.handle().clone(), repeat_state.clone());
       Ok(())
     })
     .run(tauri::generate_context!())

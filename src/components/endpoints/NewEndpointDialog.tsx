@@ -57,6 +57,8 @@ function NewEndpointForm({
         enabled: true,
         popup: true,
         sound: true,
+        repeat: false,
+        repeatMinutes: 15,
         mapping: preset.mapping,
       })
       onCreated(created, preset.id)

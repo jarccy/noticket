@@ -30,6 +30,8 @@ const (
 	maxMappingSpec    = 500
 	minEndpointSecret = 16
 	maxEndpointSecret = 200
+	minRepeatMinutes  = 1
+	maxRepeatMinutes  = 1440
 )
 
 func newEndpointID() string {
@@ -53,6 +55,9 @@ type endpointInput struct {
 	Popup       *bool                `json:"popup"`
 	Sound       *bool                `json:"sound"`
 	Mapping     *models.FieldMapping `json:"mapping"`
+	Repeat      *bool                `json:"repeat"`
+	// RepeatMinutes: cada cuántos minutos se repite el aviso no visto (1-1440).
+	RepeatMinutes *int `json:"repeatMinutes"`
 }
 
 // apply valida la entrada y la vuelca sobre ep. Devuelve un mensaje si algo no es válido.
@@ -83,6 +88,15 @@ func (in endpointInput) apply(ep *models.WebhookEndpoint) string {
 	}
 	if in.Sound != nil {
 		ep.Sound = *in.Sound
+	}
+	if in.Repeat != nil {
+		ep.Repeat = *in.Repeat
+	}
+	if in.RepeatMinutes != nil {
+		ep.RepeatMinutes = *in.RepeatMinutes
+	}
+	if ep.RepeatMinutes < minRepeatMinutes || ep.RepeatMinutes > maxRepeatMinutes {
+		return "El intervalo de repetición debe estar entre 1 y 1440 minutos"
 	}
 	if in.Mapping != nil {
 		mapping := models.FieldMapping{}
@@ -122,7 +136,7 @@ func (s *Server) createEndpoint(c *gin.Context) {
 	}
 	ep := models.WebhookEndpoint{
 		ID: newEndpointID(), Secret: newEndpointSecret(), UserID: currentUser(c).ID,
-		Enabled: true, Popup: true, Sound: true, Mapping: models.FieldMapping{},
+		Enabled: true, Popup: true, Sound: true, Mapping: models.FieldMapping{}, RepeatMinutes: 15,
 	}
 	if in.ID != nil && *in.ID != "" {
 		if !endpointIDRe.MatchString(*in.ID) {

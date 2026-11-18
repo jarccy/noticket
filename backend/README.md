@@ -90,7 +90,7 @@ Los webhooks y eventos de calendario anteriores a la migración 003 no tienen du
 | PUT/PATCH | `/api/settings` 🔒 | Actualizar ajustes (parcial). `webhookSecret` mínimo 16 caracteres y único |
 | POST | `/api/settings/webhook-secret` 🔒 | Genera un secreto nuevo (el anterior deja de valer) |
 | GET | `/api/endpoints` 🔒 | Tus endpoints configurados |
-| POST | `/api/endpoints` 🔒 | Crear: `{name, description, enabled, popup, sound, mapping}`. `id` y `secret` opcionales (la app los envía al sincronizar los endpoints locales) |
+| POST | `/api/endpoints` 🔒 | Crear: `{name, description, enabled, popup, sound, mapping, repeat, repeatMinutes}`. `repeat`: el aviso se repite cada `repeatMinutes` (1-1440) hasta que se marca como visto (leído). `id` y `secret` opcionales (la app los envía al sincronizar los endpoints locales) |
 | PATCH | `/api/endpoints/{id}` 🔒 | Editar (parcial) |
 | DELETE | `/api/endpoints/{id}` 🔒 | Borrar (lógico): la URL deja de aceptar webhooks |
 | POST | `/api/endpoints/{id}/secret` 🔒 | Genera un secreto nuevo para el endpoint |

@@ -195,7 +195,10 @@ export const UsersApi = {
 
 /** Datos editables de un endpoint (id y secreto opcionales: los envía la sincronización). */
 export type EndpointInput = Partial<
-  Pick<WebhookEndpoint, 'id' | 'name' | 'description' | 'secret' | 'enabled' | 'popup' | 'sound' | 'mapping'>
+  Pick<
+    WebhookEndpoint,
+    'id' | 'name' | 'description' | 'secret' | 'enabled' | 'popup' | 'sound' | 'mapping' | 'repeat' | 'repeatMinutes'
+  >
 >
 
 /** Endpoints de webhook configurables (cada uno recibe en `${API_URL}/webhook/{id}`). */

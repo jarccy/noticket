@@ -78,19 +78,22 @@ type FieldMapping map[string]string
 
 // WebhookEndpoint es un webhook configurado por el usuario: llega a /webhook/{id}.
 type WebhookEndpoint struct {
-	ID             string       `json:"id"`
-	Name           string       `json:"name"`
-	Description    string       `json:"description"`
-	Secret         string       `json:"secret"`
-	Enabled        bool         `json:"enabled"`
-	Popup          bool         `json:"popup"`
-	Sound          bool         `json:"sound"`
-	Mapping        FieldMapping `json:"mapping"`
-	ReceivedCount  int          `json:"receivedCount"`
-	LastReceivedAt *time.Time   `json:"lastReceivedAt,omitempty"`
-	CreatedAt      time.Time    `json:"createdAt"`
-	UpdatedAt      time.Time    `json:"updatedAt"`
-	UserID         string       `json:"-"`
+	ID          string       `json:"id"`
+	Name        string       `json:"name"`
+	Description string       `json:"description"`
+	Secret      string       `json:"secret"`
+	Enabled     bool         `json:"enabled"`
+	Popup       bool         `json:"popup"`
+	Sound       bool         `json:"sound"`
+	Mapping     FieldMapping `json:"mapping"`
+	// Repeat: el aviso se repite cada RepeatMinutes hasta que se marca como visto (leído).
+	Repeat         bool       `json:"repeat"`
+	RepeatMinutes  int        `json:"repeatMinutes"`
+	ReceivedCount  int        `json:"receivedCount"`
+	LastReceivedAt *time.Time `json:"lastReceivedAt,omitempty"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	UpdatedAt      time.Time  `json:"updatedAt"`
+	UserID         string     `json:"-"`
 }
 
 type CalendarEvent struct {

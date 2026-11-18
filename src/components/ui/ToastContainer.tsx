@@ -1,9 +1,10 @@
-import { X, CheckCircle2, AlertTriangle, XCircle, Calendar, Webhook } from 'lucide-react'
+import { X, CheckCircle2, AlertTriangle, XCircle, Calendar, Webhook, Eye, Repeat } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
 import type { NotificationType } from '@/types'
 
 export function ToastContainer() {
-  const { toastQueue, dismissToast, setActiveTab } = useApp()
+  const { toastQueue, dismissToast, setActiveTab, events, markAsRead } = useApp()
+  const unseen = new Set(events.filter((e) => !e.read).map((e) => e.id))
 
   if (toastQueue.length === 0) return null
 
@@ -66,6 +67,26 @@ export function ToastContainer() {
                 </div>
                 <h5 className="text-sm font-semibold text-foreground leading-tight">{item.title}</h5>
                 <p className="text-xs text-muted-foreground line-clamp-2">{item.message}</p>
+                {item.repeatCount && (
+                  <p className="flex items-center gap-1 text-[11px] font-medium text-warning">
+                    <Repeat className="h-3 w-3" />
+                    Sin ver · aviso n.º {item.repeatCount + 1}
+                  </p>
+                )}
+                {unseen.has(item.id) && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      markAsRead(item.id)
+                      dismissToast(item.id)
+                    }}
+                    className="mt-1 inline-flex items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    <Eye className="h-3 w-3" />
+                    Marcar como visto
+                  </button>
+                )}
               </div>
             </div>
 

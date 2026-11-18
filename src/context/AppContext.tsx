@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react'
 import confetti from 'canvas-confetti'
 import type { WebhookEvent, WebhookEndpoint, CalendarEvent, AppSettings, AppTab } from '@/types'
 import { Storage } from '@/services/storage'
@@ -17,6 +17,7 @@ import {
   reminderNotification,
   takeDueReminders,
 } from '@/lib/reminders'
+import { pendingRepeats, takeDueRepeats } from '@/lib/repeats'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
@@ -61,7 +62,10 @@ interface AppContextType {
 }
 
 /** Lo que el usuario edita de un endpoint (id, secreto y contadores los gestiona la app). */
-export type EndpointData = Pick<WebhookEndpoint, 'name' | 'description' | 'enabled' | 'popup' | 'sound' | 'mapping'>
+export type EndpointData = Pick<
+  WebhookEndpoint,
+  'name' | 'description' | 'enabled' | 'popup' | 'sound' | 'mapping' | 'repeat' | 'repeatMinutes'
+>
 
 export type DataMode = 'local' | 'cloud'
 
@@ -274,6 +278,24 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
     return () => clearInterval(timer)
   }, [calendarEvents, settings.desktopNotificationsEnabled, notify])
 
+  // Repeating notifications: unseen webhooks from endpoints with "repeat" on come back
+  // every N minutes until they are marked as seen
+  const repeating = useMemo(() => pendingRepeats(events, endpoints), [events, endpoints])
+  useEffect(() => {
+    // Installed app with popups: Rust schedules them so they fire even from the tray
+    if (isTauri() && settings.desktopNotificationsEnabled) {
+      invoke('set_repeats', { repeats: repeating }).catch((err) =>
+        console.error('No se pudieron programar las repeticiones', err)
+      )
+      return
+    }
+    if (isTauri()) invoke('set_repeats', { repeats: [] }).catch(() => {})
+    if (repeating.length === 0) return
+    const check = () => takeDueRepeats(repeating).forEach((ev) => notify(ev))
+    const timer = setInterval(check, 15_000)
+    return () => clearInterval(timer)
+  }, [repeating, settings.desktopNotificationsEnabled, notify])
+
   // Installed app: webhooks arrive from the embedded Rust server as Tauri events
   useEffect(() => {
     if (!isTauri()) return
@@ -283,6 +305,12 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
       listen<boolean>('gateway-status', (e) => setIsGatewayOnline(e.payload)),
       listen<string>('navigate', (e) => setActiveTab(e.payload as AppContextType['activeTab'])),
       listen<string>('reminder-fired', (e) => markReminded(e.payload)),
+      // "Marcar como visto" from the popup: Rust already stopped the repetitions (and,
+      // in local mode, saved it in SQLite)
+      listen<string>('event-seen', (e) => {
+        setEvents((prev) => prev.map((ev) => (ev.id === e.payload ? { ...ev, read: true } : ev)))
+        if (cloud) Api.markAsRead(e.payload)
+      }),
     ]
     invoke<boolean>('gateway_online').then((online) => {
       if (!cancelled) setIsGatewayOnline(online)
@@ -291,7 +319,7 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
       cancelled = true
       unlisteners.forEach((p) => p.then((off) => off()))
     }
-  }, [handleIncomingEvent])
+  }, [cloud, handleIncomingEvent])
 
   // Without a session the local Tauri server runs in local mode: it accepts webhooks
   // from this machine, and from other devices only with the local secret
@@ -500,6 +528,8 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
               popup: ep.popup,
               sound: ep.sound,
               mapping: ep.mapping,
+              repeat: ep.repeat,
+              repeatMinutes: ep.repeatMinutes,
             })
           }
           uploadedEndpoints.push(ep.id)

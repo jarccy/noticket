@@ -17,6 +17,8 @@ export interface WebhookEvent {
   /** Preferencias del endpoint para este aviso: false desactiva el popup / el sonido. */
   popup?: boolean
   sound?: boolean
+  /** En una repetición (aviso aún no visto): cuántas veces se ha mostrado. */
+  repeatCount?: number
 }
 
 /** Campos del evento que un endpoint puede mapear desde el payload. */
@@ -38,6 +40,9 @@ export interface WebhookEndpoint {
   popup: boolean
   sound: boolean
   mapping: FieldMapping
+  /** Repetir el aviso cada `repeatMinutes` mientras no se marque como visto. */
+  repeat: boolean
+  repeatMinutes: number
   receivedCount: number
   lastReceivedAt?: string
   createdAt: string

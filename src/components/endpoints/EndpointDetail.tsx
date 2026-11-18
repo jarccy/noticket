@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import {
   Activity,
   Bell,
+  BellRing,
   Check,
   Eye,
   EyeOff,
@@ -27,6 +28,7 @@ import { StatusIcon, relativeTime } from '@/components/ui/status'
 import { NotificationPreview } from '@/components/endpoints/NotificationPreview'
 import { PRESETS, endpointMark } from '@/components/endpoints/presets'
 import { parseWebhookLocally, renderMapping } from '@/lib/webhook-parser'
+import { REPEAT_MAX, REPEAT_MIN, REPEAT_PRESETS, repeatLabel } from '@/lib/repeats'
 import { cn } from '@/lib/utils'
 import type { FieldMapping, MappedField, WebhookEndpoint } from '@/types'
 
@@ -56,7 +58,16 @@ function leafPaths(value: unknown, prefix = '', depth = 0, out: string[] = []): 
 }
 
 function draftOf(ep: WebhookEndpoint): EndpointData {
-  return { name: ep.name, description: ep.description, enabled: ep.enabled, popup: ep.popup, sound: ep.sound, mapping: { ...ep.mapping } }
+  return {
+    name: ep.name,
+    description: ep.description,
+    enabled: ep.enabled,
+    popup: ep.popup,
+    sound: ep.sound,
+    repeat: ep.repeat,
+    repeatMinutes: ep.repeatMinutes,
+    mapping: { ...ep.mapping },
+  }
 }
 
 function cleanMapping(mapping: FieldMapping): FieldMapping {
@@ -72,6 +83,8 @@ const sameDraft = (a: EndpointData, b: EndpointData) =>
   a.description.trim() === b.description.trim() &&
   a.popup === b.popup &&
   a.sound === b.sound &&
+  a.repeat === b.repeat &&
+  a.repeatMinutes === b.repeatMinutes &&
   JSON.stringify(cleanMapping(a.mapping)) === JSON.stringify(cleanMapping(b.mapping))
 
 export function EndpointDetail({
@@ -413,7 +426,7 @@ function ConfigSection({
   }
 
   const save = async () => {
-    if (!draft.name.trim()) return
+    if (!draft.name.trim() || !validMinutes(draft.repeatMinutes)) return
     setSaving(true)
     try {
       const next = await updateEndpoint(endpoint.id, {
@@ -421,6 +434,8 @@ function ConfigSection({
         description: draft.description.trim(),
         popup: draft.popup,
         sound: draft.sound,
+        repeat: draft.repeat,
+        repeatMinutes: draft.repeatMinutes,
         mapping: cleanMapping(draft.mapping),
       })
       setDraft(draftOf(next))
@@ -469,6 +484,13 @@ function ConfigSection({
               disabled={!draft.popup}
             />
           </div>
+          <RepeatSetting
+            repeat={draft.repeat}
+            minutes={draft.repeatMinutes}
+            disabled={!draft.popup}
+            onRepeat={(v) => set('repeat', v)}
+            onMinutes={(v) => set('repeatMinutes', v)}
+          />
         </div>
       </Panel>
 
@@ -532,6 +554,7 @@ function ConfigSection({
                   source={preview.source === 'Simulador UI' ? draft.name || endpoint.name : preview.source}
                   popup={draft.popup}
                   sound={draft.sound}
+                  repeatMinutes={draft.repeat ? draft.repeatMinutes : undefined}
                 />
               ) : (
                 <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
@@ -598,7 +621,12 @@ function ConfigSection({
                   <RotateCcw className="h-3.5 w-3.5" />
                   Descartar
                 </Button>
-                <Button size="sm" onClick={save} disabled={saving || !draft.name.trim()} className="gap-1.5">
+                <Button
+                  size="sm"
+                  onClick={save}
+                  disabled={saving || !draft.name.trim() || !validMinutes(draft.repeatMinutes)}
+                  className="gap-1.5"
+                >
                   {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                   Guardar
                 </Button>
@@ -647,6 +675,108 @@ function OptionTile({
         <p className="truncate text-xs text-muted-foreground">{description}</p>
       </div>
       <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} />
+    </div>
+  )
+}
+
+const validMinutes = (m: number) => Number.isInteger(m) && m >= REPEAT_MIN && m <= REPEAT_MAX
+
+/** «Repetir aviso»: el aviso vuelve cada N minutos mientras no se marque como visto. */
+function RepeatSetting({
+  repeat,
+  minutes,
+  disabled,
+  onRepeat,
+  onMinutes,
+}: {
+  repeat: boolean
+  minutes: number
+  disabled: boolean
+  onRepeat: (v: boolean) => void
+  onMinutes: (v: number) => void
+}) {
+  const active = repeat && !disabled
+  const [customText, setCustomText] = useState(REPEAT_PRESETS.includes(minutes) ? '' : String(minutes))
+  const invalid = active && !validMinutes(minutes)
+
+  return (
+    <div
+      className={cn(
+        'overflow-hidden rounded-xl border transition-colors',
+        active ? 'border-primary/40' : 'border-border',
+        disabled && 'opacity-50'
+      )}
+    >
+      <div className={cn('flex items-center gap-3 p-3', active && 'bg-primary/5')}>
+        <span
+          className={cn(
+            'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
+            active ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+          )}
+        >
+          <BellRing className="h-4 w-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-foreground">Repetir aviso</p>
+          <p className="text-xs text-muted-foreground">
+            {disabled
+              ? 'Necesita el aviso emergente activado'
+              : active
+                ? `Vuelve a aparecer ${repeatLabel(validMinutes(minutes) ? minutes : 15)} hasta que lo marques como visto`
+                : 'El aviso aparece una sola vez'}
+          </p>
+        </div>
+        <Switch checked={repeat} onCheckedChange={onRepeat} disabled={disabled} />
+      </div>
+
+      {active && (
+        <div className="flex animate-fade-in flex-wrap items-center gap-2 border-t border-primary/20 px-3 py-2.5">
+          <span className="text-[11px] font-medium text-muted-foreground">Cada</span>
+          <div className="inline-flex items-center gap-0.5 rounded-lg bg-muted p-0.5" role="radiogroup" aria-label="Intervalo">
+            {REPEAT_PRESETS.map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="radio"
+                aria-checked={minutes === m && !customText}
+                onClick={() => {
+                  onMinutes(m)
+                  setCustomText('')
+                }}
+                className={cn(
+                  'h-7 rounded-md px-2.5 text-xs font-medium tabular-nums transition-colors',
+                  minutes === m && !customText
+                    ? 'bg-card text-foreground shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {m < 60 ? `${m} min` : `${m / 60} h`}
+              </button>
+            ))}
+          </div>
+          <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            o
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={REPEAT_MIN}
+              max={REPEAT_MAX}
+              value={customText}
+              placeholder="otro"
+              onChange={(e) => {
+                setCustomText(e.target.value)
+                if (e.target.value === '') return
+                const n = Number(e.target.value)
+                onMinutes(Number.isFinite(n) ? Math.round(n) : 0)
+              }}
+              aria-invalid={invalid}
+              className={cn('h-7 w-20 text-xs tabular-nums', invalid && 'border-destructive focus-visible:ring-destructive')}
+            />
+            min
+          </label>
+          {invalid && <span className="text-[11px] text-destructive">Entre 1 y 1440 minutos</span>}
+        </div>
+      )}
     </div>
   )
 }
