@@ -19,7 +19,7 @@ import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 
 export function SettingsView() {
-  const { settings, updateSettings, triggerNotificationTest, mode } = useApp()
+  const { settings, updateSettings, triggerNotificationTest } = useApp()
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -30,7 +30,7 @@ export function SettingsView() {
 
       <div className="grid gap-6">
         {/* Modo local: webhooks directos a la app de escritorio */}
-        {isTauri() && mode === 'local' && <LocalWebhookCard />}
+        {isTauri() && <LocalWebhookCard />}
 
         {/* Notificaciones & Audio */}
         <Card className="border-border/80">

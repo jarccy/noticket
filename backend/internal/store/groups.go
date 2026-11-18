@@ -46,13 +46,14 @@ func (s *Store) SetUserType(ctx context.Context, userID string, t models.UserTyp
 		WHERE id = $1 RETURNING `+userCols, userID, t))
 }
 
-// PromoteAdmins da el rol admin a los correos configurados en ADMIN_EMAILS.
+// PromoteAdmins da el rol admin a los correos configurados en ADMIN_EMAILS, solo si la
+// cuenta tiene el correo verificado (ver applyAdminEmail).
 func (s *Store) PromoteAdmins(ctx context.Context, emails []string) (int64, error) {
 	if len(emails) == 0 {
 		return 0, nil
 	}
 	tag, err := s.pool.Exec(ctx, `UPDATE users SET user_type = 'admin', updated_at = now()
-		WHERE lower(email) = ANY($1) AND user_type <> 'admin'`, emails)
+		WHERE lower(email) = ANY($1) AND user_type <> 'admin' AND email_verified`, emails)
 	return tag.RowsAffected(), err
 }
 

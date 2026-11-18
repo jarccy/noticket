@@ -70,9 +70,11 @@ func (s *Server) requireAuth(c *gin.Context) {
 	c.Next()
 }
 
-// applyAdminEmail da el rol admin a una cuenta nueva si su correo está en ADMIN_EMAILS.
+// applyAdminEmail da el rol admin si el correo está en ADMIN_EMAILS y está verificado
+// (login con Google). Un registro con contraseña no demuestra que el correo sea suyo: si
+// bastara, cualquiera podría registrarse con el correo del admin antes que él.
 func (s *Server) applyAdminEmail(c *gin.Context, u models.User) (models.User, error) {
-	if u.IsAdmin() || !s.cfg.IsAdminEmail(u.Email) {
+	if u.IsAdmin() || !u.EmailVerified || !s.cfg.IsAdminEmail(u.Email) {
 		return u, nil
 	}
 	return s.store.SetUserType(c.Request.Context(), u.ID, models.UserAdmin)

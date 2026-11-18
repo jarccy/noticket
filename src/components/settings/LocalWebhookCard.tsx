@@ -69,7 +69,7 @@ export function LocalWebhookCard() {
       <CardHeader>
         <div className="flex items-center gap-2">
           <Webhook className="h-5 w-5 text-primary" />
-          <CardTitle className="text-base font-semibold">Recibir webhooks sin backend</CardTitle>
+          <CardTitle className="text-base font-semibold">Recibir webhooks en esta app</CardTitle>
           <span
             className={`ml-auto text-[11px] font-medium ${isGatewayOnline ? 'text-success' : 'text-warning'}`}
           >
@@ -77,8 +77,9 @@ export function LocalWebhookCard() {
           </span>
         </div>
         <CardDescription className="text-xs">
-          Sin sesión, envía tus webhooks directamente a esta app. Desde este equipo basta con la dirección
-          local; desde otros equipos de tu red, usa la dirección de red y el secreto.
+          Envía webhooks directamente a esta app, con o sin sesión. Un programa de este equipo (curl, un
+          script) puede usar la dirección local sin secreto; otros equipos, túneles y páginas web necesitan el
+          secreto. Para cada integración es mejor crear su propio endpoint.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

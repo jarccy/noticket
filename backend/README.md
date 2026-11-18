@@ -21,7 +21,9 @@ Cada usuario tiene un `user_type`:
 | `boss` | Lo anterior + crear grupos, añadir/quitar miembros y enviar notificaciones (o repartir webhooks) a **sus** grupos |
 | `admin` | Todo: ver los webhooks, calendarios y grupos de todos (`?scope=all`), enviar a cualquier grupo o usuario y cambiar roles |
 
-- **Primer admin**: pon su correo en `ADMIN_EMAILS` (separados por coma). Se aplica al arrancar el servidor y al registrarse.
+- **Primer admin**: pon su correo en `ADMIN_EMAILS` (separados por coma) y **entra con Google**. Solo se aplica a cuentas con el correo verificado (al arrancar el servidor y al iniciar sesión con Google): un registro con contraseña no demuestra que el correo sea tuyo. Si no usas Google, asciéndelo a mano: `UPDATE users SET user_type = 'admin' WHERE lower(email) = 'tu@correo';`.
+- **Vincular Google**: si una cuenta creada con contraseña (correo sin verificar) entra con Google, esa contraseña se anula y se cierran sus sesiones, por si la creó otra persona con tu correo. Para volver a tener contraseña, usa «¿Olvidaste tu contraseña?».
+- **Proxies**: si hay un proxy inverso delante (nginx…), pon su IP en `TRUSTED_PROXIES` para que los límites de intentos usen la IP real del cliente. Vacío = no se confía en `X-Forwarded-For`.
 - Los demás roles los asigna un admin con `PATCH /api/users/{id}` `{"userType": "boss"}`.
 - **Sin sesión no se recibe ningún webhook**: `POST /webhook` exige el secreto de webhook de un usuario registrado, y la app de escritorio rechaza los webhooks externos (puerto 3690) hasta que se inicia sesión. Sin sesión solo se pueden crear notificaciones propias (se quedan en el equipo).
 

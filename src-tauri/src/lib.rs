@@ -29,8 +29,8 @@ pub(crate) fn popups_enabled() -> bool {
   POPUPS_ENABLED.load(Ordering::Relaxed)
 }
 
-/// Without a session the local HTTP server works in "local mode": it accepts
-/// webhooks from this machine, and from other devices only with the local secret.
+/// Without a session the app stores webhooks in SQLite ("local mode"). In both modes the
+/// generic `/webhook` accepts programs on this machine and needs the local secret otherwise.
 pub(crate) static SESSION_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 /// Show an event in the popup window. A hidden webview may be frozen, so the

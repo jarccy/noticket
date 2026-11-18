@@ -44,6 +44,11 @@ func New(st *store.Store, hub *sse.Hub, cfg config.Config) *Server {
 
 func (s *Server) Router() *gin.Engine {
 	r := gin.New()
+	// Por defecto Gin acepta X-Forwarded-For de cualquiera, y con eso se esquivan los límites
+	// de intentos por IP. Solo se confía en los proxies configurados (TRUSTED_PROXIES).
+	if err := r.SetTrustedProxies(s.cfg.TrustedProxies); err != nil {
+		log.Fatalf("TRUSTED_PROXIES inválido: %v", err)
+	}
 	// /api/events lleva el token en la query (EventSource no admite cabeceras): no se registra en el log
 	r.Use(gin.LoggerWithConfig(gin.LoggerConfig{SkipPaths: []string{"/api/events"}}), gin.Recovery(), s.cors())
 

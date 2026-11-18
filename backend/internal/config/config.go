@@ -10,6 +10,9 @@ type Config struct {
 	DatabaseURL string
 	Port        string
 	CORSOrigins []string
+	// TrustedProxies: IPs/CIDR de los proxies inversos cuyo X-Forwarded-For se acepta.
+	// Vacío = ninguno: la IP del cliente es la de la conexión (no se puede falsear).
+	TrustedProxies []string
 
 	// URL pública de este backend (para el callback de Google) y del frontend (enlaces de correo)
 	PublicURL   string
@@ -58,6 +61,12 @@ func Load() Config {
 	}
 
 	var admins []string
+	var proxies []string
+	for _, p := range strings.Split(getenv("TRUSTED_PROXIES", ""), ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			proxies = append(proxies, p)
+		}
+	}
 	for _, e := range strings.Split(getenv("ADMIN_EMAILS", ""), ",") {
 		if e = strings.ToLower(strings.TrimSpace(e)); e != "" {
 			admins = append(admins, e)
@@ -69,6 +78,7 @@ func Load() Config {
 		DatabaseURL:        getenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/dbnoticket?sslmode=disable"),
 		Port:               port,
 		CORSOrigins:        origins,
+		TrustedProxies:     proxies,
 		PublicURL:          strings.TrimRight(getenv("PUBLIC_URL", "http://localhost:"+port), "/"),
 		FrontendURL:        frontend,
 		GoogleClientID:     getenv("GOOGLE_CLIENT_ID", ""),

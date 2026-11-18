@@ -72,14 +72,27 @@ fn secret_matches(req: &Request, expected: &str) -> bool {
   !expected.is_empty() && request_secret(req).is_some_and(|got| constant_time_eq(&got, expected))
 }
 
-/// A request made from this machine. Tunnels (cloudflared, ngrok…) also connect from
-/// localhost but add forwarding headers: those count as remote.
+/// Headers that mean the request did not come straight from a program on this machine:
+/// tunnels (cloudflared, ngrok…) connect from localhost but add forwarding headers, and
+/// browsers add `Origin` / `Sec-Fetch-*`, so a web page open in the user's browser can't
+/// post to localhost:3690 without the secret.
+const NOT_LOCAL_HEADERS: &[&str] = &[
+  "x-forwarded-for",
+  "forwarded",
+  "cf-connecting-ip",
+  "x-real-ip",
+  "origin",
+  "sec-fetch-site",
+  "sec-fetch-mode",
+];
+
+/// A request made directly by a program on this machine (curl, a script…).
 fn is_local_request(req: &Request) -> bool {
-  req.remote_addr().is_some_and(|a| a.ip().is_loopback())
-    && !["x-forwarded-for", "forwarded", "cf-connecting-ip", "x-real-ip"].iter().any(|h| has_header(req, h))
+  req.remote_addr().is_some_and(|a| a.ip().is_loopback()) && !NOT_LOCAL_HEADERS.iter().any(|h| has_header(req, h))
 }
 
-/// Generic `/webhook` in local mode: this machine is allowed; anything else needs the local secret.
+/// Generic `/webhook` (with or without a session): a program on this machine is allowed;
+/// anything else (other devices, tunnels, web pages) needs the local secret.
 fn local_mode_authorized(req: &Request) -> bool {
   is_local_request(req) || secret_matches(req, &LOCAL_SECRET.lock().map(|s| s.clone()).unwrap_or_default())
 }
@@ -361,7 +374,7 @@ fn accepted(event: &WebhookEvent) -> JsonResponse {
 }
 
 fn handle_generic(app: &AppHandle, req: &mut Request) -> JsonResponse {
-  if !crate::SESSION_ACTIVE.load(Ordering::Relaxed) && !local_mode_authorized(req) {
+  if !local_mode_authorized(req) {
     return error(401, "Secreto local inválido: envíalo en x-webhook-secret, Authorization: Bearer o ?secret=");
   }
   match read_json_body(req) {

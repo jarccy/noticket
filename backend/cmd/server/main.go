@@ -49,6 +49,8 @@ func main() {
 		Addr:              ":" + cfg.Port,
 		Handler:           api.New(st, sse.NewHub(), cfg).Router(),
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	go func() {

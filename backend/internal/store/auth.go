@@ -48,6 +48,11 @@ func (s *Store) CreatePasswordUser(ctx context.Context, email, name, passwordHas
 
 // UpsertGoogleUser busca por google_id; si no existe, vincula la cuenta con el mismo correo
 // (Google ya lo verificó) o crea una nueva.
+//
+// Si la cuenta con ese correo se creó con contraseña y el correo nunca se verificó, pudo
+// crearla otra persona para esperar a que el dueño real entrara con Google: al vincularla
+// se anula esa contraseña y se cierran sus sesiones y enlaces de restablecimiento. El dueño
+// puede volver a poner contraseña con «¿Olvidaste tu contraseña?».
 func (s *Store) UpsertGoogleUser(ctx context.Context, googleID, email, name, picture string) (models.User, error) {
 	u, err := scanUser(s.pool.QueryRow(ctx, `UPDATE users SET
 			avatar_url = COALESCE(NULLIF($2, ''), avatar_url),
@@ -57,15 +62,39 @@ func (s *Store) UpsertGoogleUser(ctx context.Context, googleID, email, name, pic
 	if !errors.Is(err, ErrNotFound) {
 		return u, err
 	}
-	return scanUser(s.pool.QueryRow(ctx, `INSERT INTO users (email, name, google_id, avatar_url, email_verified)
-		VALUES (lower($1), $2, $3, NULLIF($4, ''), TRUE)
-		ON CONFLICT ((lower(email))) DO UPDATE SET
-			google_id = EXCLUDED.google_id,
-			avatar_url = COALESCE(users.avatar_url, EXCLUDED.avatar_url),
-			name = CASE WHEN users.name = '' THEN EXCLUDED.name ELSE users.name END,
-			email_verified = TRUE,
-			updated_at = now()
-		RETURNING `+userCols, email, name, googleID, picture))
+
+	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		var existingID string
+		var verified bool
+		err := tx.QueryRow(ctx, `SELECT id, email_verified FROM users WHERE lower(email) = lower($1) FOR UPDATE`, email).
+			Scan(&existingID, &verified)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			u, err = scanUser(tx.QueryRow(ctx, `INSERT INTO users (email, name, google_id, avatar_url, email_verified)
+				VALUES (lower($1), $2, $3, NULLIF($4, ''), TRUE) RETURNING `+userCols, email, name, googleID, picture))
+			return err
+		case err != nil:
+			return err
+		}
+		if !verified {
+			if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE user_id = $1`, existingID); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `DELETE FROM password_reset_tokens WHERE user_id = $1`, existingID); err != nil {
+				return err
+			}
+		}
+		u, err = scanUser(tx.QueryRow(ctx, `UPDATE users SET
+				google_id = $2,
+				password_hash = CASE WHEN email_verified THEN password_hash END,
+				avatar_url = COALESCE(avatar_url, NULLIF($3, '')),
+				name = CASE WHEN name = '' THEN $4 ELSE name END,
+				email_verified = TRUE,
+				updated_at = now()
+			WHERE id = $1 RETURNING `+userCols, existingID, googleID, picture, name))
+		return err
+	})
+	return u, err
 }
 
 // ---------- Sesiones ----------
