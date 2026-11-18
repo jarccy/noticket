@@ -1,7 +1,17 @@
 import { useState } from 'react'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { ArrowUpRight, ChevronDown, Inbox, Zap } from 'lucide-react'
+import {
+  Activity,
+  ArrowUpRight,
+  CalendarClock,
+  ChevronDown,
+  Inbox,
+  ShieldAlert,
+  TrendingUp,
+  Zap,
+  type LucideIcon,
+} from 'lucide-react'
 import { useApp } from '@/context/AppContext'
 import { useAuth } from '@/context/AuthContext'
 import { isAdmin } from '@/lib/auth'
@@ -22,34 +32,60 @@ const PRESETS: { id: Preset; label: string; hint: string; type: NotificationType
   { id: 'payment', label: 'Pago recibido', hint: 'Stripe', type: 'info' },
 ]
 
+type Tone = 'primary' | 'teal' | 'warning' | 'success'
+
+const TONES: Record<Tone, { tile: string; glow: string }> = {
+  primary: { tile: 'bg-brand text-primary-foreground glow-primary', glow: 'bg-primary' },
+  teal: { tile: 'bg-brand-3/15 text-brand-3', glow: 'bg-brand-3' },
+  warning: { tile: 'bg-warning/15 text-warning', glow: 'bg-warning' },
+  success: { tile: 'bg-success/15 text-success', glow: 'bg-success' },
+}
+
 function Metric({
   label,
   value,
   hint,
   hintClass,
+  icon: Icon,
+  tone,
   onClick,
 }: {
   label: string
   value: string | number
   hint: string
   hintClass?: string
+  icon: LucideIcon
+  tone: Tone
   onClick?: () => void
 }) {
   const Comp = onClick ? 'button' : 'div'
+  const t = TONES[tone]
   return (
     <Comp
       onClick={onClick}
       className={cn(
-        'group flex flex-col gap-1 bg-card p-5 text-left',
-        onClick && 'cursor-pointer transition-colors hover:bg-accent/50'
+        'surface group relative flex flex-col gap-3 overflow-hidden rounded-2xl p-5 text-left',
+        onClick && 'cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30'
       )}
     >
-      <span className="flex items-center justify-between text-xs font-medium text-muted-foreground">
-        {label}
+      {/* Resplandor de la esquina */}
+      <span
+        className={cn('pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full opacity-[0.12] blur-2xl', t.glow)}
+        aria-hidden
+      />
+      <span className="flex items-center justify-between">
+        <span className="text-xs font-medium text-muted-foreground">{label}</span>
+        <span className={cn('flex h-8 w-8 items-center justify-center rounded-xl', t.tile)}>
+          <Icon className="h-4 w-4" />
+        </span>
+      </span>
+      <span className="font-display text-4xl font-bold leading-none tracking-tight tabular-nums text-foreground">
+        {value}
+      </span>
+      <span className={cn('flex items-center gap-1 text-xs text-muted-foreground', hintClass)}>
+        {hint}
         {onClick && <ArrowUpRight className="h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-100" />}
       </span>
-      <span className="text-3xl font-semibold tracking-tight tabular-nums text-foreground">{value}</span>
-      <span className={cn('text-xs text-muted-foreground', hintClass)}>{hint}</span>
     </Comp>
   )
 }
@@ -120,28 +156,50 @@ export function DashboardView() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Dashboard"
-        description="Webhooks entrantes, alertas y próximos eventos en tiempo real."
+        title="Inicio"
+        description="Un resumen de los avisos que te llegan y de lo que tienes agendado."
       />
 
       {/* Metrics strip */}
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border lg:grid-cols-4">
-        <Metric label="Webhooks" value={events.length} hint={unreadCount > 0 ? `${unreadCount} sin leer` : 'Todo leído'} onClick={() => setActiveTab('webhooks')} />
-        <Metric label="Eventos hoy" value={todayCalendarCount} hint={`${calendarEvents.length} agendados en total`} onClick={() => setActiveTab('calendar')} />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
+        <Metric
+          label="Avisos recibidos"
+          value={events.length}
+          hint={unreadCount > 0 ? `${unreadCount} sin leer` : 'Todo leído'}
+          icon={Activity}
+          tone="primary"
+          onClick={() => setActiveTab('webhooks')}
+        />
+        <Metric
+          label="Citas hoy"
+          value={todayCalendarCount}
+          hint={`${calendarEvents.length} agendados en total`}
+          icon={CalendarClock}
+          tone="teal"
+          onClick={() => setActiveTab('calendar')}
+        />
         <Metric
           label="Alertas"
           value={alertCount}
           hint={alertCount > 0 ? 'Requieren atención' : 'Todo en orden'}
           hintClass={alertCount > 0 ? 'text-warning' : 'text-success'}
+          icon={ShieldAlert}
+          tone="warning"
         />
-        <Metric label="Tasa de éxito" value={`${successRate}%`} hint={`${successCount} eventos exitosos`} />
+        <Metric
+          label="Tasa de éxito"
+          value={`${successRate}%`}
+          hint={`${successCount} eventos exitosos`}
+          icon={TrendingUp}
+          tone="success"
+        />
       </div>
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
         {/* Activity */}
         <section className="min-w-0 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold text-foreground">Actividad reciente</h2>
+            <h2 className="font-display text-base font-semibold text-foreground">Actividad reciente</h2>
             <Segmented
               ariaLabel="Filtrar por tipo"
               value={filterType}
@@ -150,12 +208,12 @@ export function DashboardView() {
             />
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-border bg-card">
+          <div className="overflow-hidden surface rounded-2xl">
             {filteredEvents.length === 0 ? (
               <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
                 <Inbox className="h-6 w-6 text-muted-foreground/50" />
                 <p className="text-sm font-medium text-foreground">Sin actividad para este filtro</p>
-                <p className="text-xs text-muted-foreground">Envía un webhook o usa una simulación rápida.</p>
+                <p className="text-xs text-muted-foreground">Cuando te llegue un aviso aparecerá aquí. También puedes probar con un ejemplo.</p>
               </div>
             ) : (
               <ul className="divide-y divide-border">
@@ -236,7 +294,7 @@ export function DashboardView() {
             </div>
             {upcoming.length === 0 ? (
               <p className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-xs text-muted-foreground">
-                No hay eventos próximos.
+                No tienes nada agendado próximamente.
               </p>
             ) : (
               <ul className="space-y-1">
@@ -274,7 +332,7 @@ export function DashboardView() {
           <section className="space-y-3">
             <h2 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
               <Zap className="h-3.5 w-3.5 text-muted-foreground" />
-              Simulación rápida
+              Probar con un ejemplo
             </h2>
             <div className="grid grid-cols-2 gap-2">
               {PRESETS.map((p) => (
@@ -282,7 +340,7 @@ export function DashboardView() {
                   key={p.id}
                   type="button"
                   onClick={() => sendPreset(p.id)}
-                  className="flex flex-col items-start gap-2 rounded-xl border border-border bg-card p-3 text-left transition-colors hover:border-foreground/20 hover:bg-accent/40 active:scale-[0.98]"
+                  className="flex flex-col items-start gap-2 surface rounded-2xl p-3 text-left transition-colors hover:border-foreground/20 hover:bg-accent/40 active:scale-[0.98]"
                 >
                   <StatusIcon type={p.type} className="h-7 w-7" />
                   <span className="min-w-0">

@@ -79,7 +79,7 @@ export function LocalWebhookCard() {
         <CardDescription className="text-xs">
           Envía webhooks directamente a esta app, con o sin sesión. Un programa de este equipo (curl, un
           script) puede usar la dirección local sin secreto; otros equipos, túneles y páginas web necesitan el
-          secreto. Para cada integración es mejor crear su propio endpoint.
+          secreto. Para cada servicio es mejor crear su propia conexión.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

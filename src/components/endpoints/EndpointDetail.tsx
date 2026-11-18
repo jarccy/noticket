@@ -137,7 +137,7 @@ export function EndpointDetail({
   return (
     <section className="min-w-0 space-y-5">
       {/* Header */}
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="overflow-hidden surface rounded-2xl">
         <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start">
           <span className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-linear-to-br from-primary to-primary/65 text-sm font-bold text-primary-foreground shadow-md shadow-primary/20">
             {endpointMark(endpoint.name)}
@@ -176,8 +176,8 @@ export function EndpointDetail({
               variant="outline"
               size="icon"
               onClick={() => setConfirmDelete(true)}
-              title="Eliminar endpoint"
-              aria-label="Eliminar endpoint"
+              title="Eliminar conexión"
+              aria-label="Eliminar conexión"
               className="h-8 w-8 hover:border-destructive/40 hover:text-destructive"
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -201,7 +201,7 @@ export function EndpointDetail({
       )}
 
       <Segmented<Section>
-        ariaLabel="Sección del endpoint"
+        ariaLabel="Sección de la conexión"
         value={section}
         onChange={setSection}
         options={[
@@ -230,7 +230,7 @@ export function EndpointDetail({
           setConfirmDelete(false)
           deleteEndpoint(endpoint.id).then(onDeleted).catch(fail)
         }}
-        title="¿Eliminar este endpoint?"
+        title="¿Eliminar esta conexión?"
         description="Su URL dejará de aceptar webhooks. Los que ya recibió se quedan en el historial."
         items={[endpoint.name]}
       />
@@ -255,7 +255,7 @@ function Panel({ icon: Icon, title, description, actions, children }: {
   children: React.ReactNode
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card">
+    <div className="surface rounded-2xl">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-3.5">
         <div className="flex min-w-0 items-start gap-2.5">
           <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
@@ -603,7 +603,7 @@ function ConfigSection({
       {/* Barra de guardado */}
       {(dirty || saved) && (
         <div className="sticky bottom-4 z-10 animate-fade-in">
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/95 px-4 py-2.5 shadow-lg backdrop-blur">
+          <div className="flex items-center justify-between gap-3 surface rounded-2xl/95 px-4 py-2.5 shadow-lg backdrop-blur">
             <span className="flex items-center gap-2 text-xs text-muted-foreground">
               {saved && !dirty ? (
                 <>
@@ -694,7 +694,7 @@ function ActivitySection({ events }: { events: ReturnType<typeof useApp>['events
     )
   }
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card">
+    <div className="overflow-hidden surface rounded-2xl">
       <div className="flex items-center gap-2 border-b border-border px-5 py-3">
         <Activity className="h-4 w-4 text-muted-foreground" />
         <h3 className="text-sm font-semibold text-foreground">Últimos webhooks</h3>

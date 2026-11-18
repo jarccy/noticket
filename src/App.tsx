@@ -21,7 +21,7 @@ function MainContent() {
 
   return (
     <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden lg:h-dvh">
-      <div key={activeTab} className="mx-auto max-w-6xl animate-fade-in px-4 py-6 sm:px-6 md:px-10 md:py-8">
+      <div key={activeTab} className="mx-auto max-w-6xl animate-fade-in px-4 py-6 sm:px-6 md:px-8 md:py-9 lg:px-10">
         {activeTab === 'dashboard' && <DashboardView />}
         {activeTab === 'calendar' && <CalendarView />}
         {activeTab === 'webhooks' && <WebhookView />}
@@ -44,7 +44,7 @@ function Gate() {
 
   if (status === 'loading') {
     return (
-      <div className="flex h-dvh items-center justify-center bg-background">
+      <div className="flex h-dvh items-center justify-center">
         <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
       </div>
     )
@@ -56,7 +56,7 @@ function Gate() {
     <>
       {/* key: al cambiar de modo se recargan los datos desde su origen */}
       <AppProvider key={mode} mode={mode}>
-        <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground antialiased lg:flex-row">
+        <div className="flex h-dvh flex-col overflow-hidden text-foreground antialiased lg:flex-row">
           <Sidebar />
           <MainContent />
           <WebhookSimulatorModal />

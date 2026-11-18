@@ -56,14 +56,14 @@ export function EndpointsView() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Endpoints"
-        description="Una URL por integración, cada una con su secreto, sus avisos y su forma de leer el JSON."
+        title="Conexiones"
+        description="Conecta tus apps y servicios. Cada conexión tiene su propia dirección para enviarte avisos y tú decides cómo se muestran."
         actions={
           endpointsAvailable &&
           endpoints.length > 0 && (
             <Button onClick={() => setCreating(true)} className="gap-1.5">
               <Plus className="h-4 w-4" />
-              Nuevo endpoint
+              Nueva conexión
             </Button>
           )
         }
@@ -72,13 +72,13 @@ export function EndpointsView() {
       {!endpointsAvailable ? (
         <EmptyHero
           icon={Server}
-          title="No hay nada escuchando"
+          title="Necesitas iniciar sesión o la app de escritorio"
           text="En el navegador sin sesión nadie recibe los webhooks. Inicia sesión para usar el servidor, o abre la app de escritorio: los recibe en el puerto 3690 y los guarda en este equipo."
         />
       ) : endpoints.length === 0 ? (
         <EmptyHero
           icon={Webhook}
-          title="Crea tu primer endpoint"
+          title="Crea tu primera conexión"
           text="Dale a cada servicio (GitHub, Stripe, tu servidor…) su propia URL y secreto, decide si avisa o suena, y elige qué campos del JSON forman el aviso."
         >
           <div className="flex flex-wrap justify-center gap-2">
@@ -94,14 +94,14 @@ export function EndpointsView() {
           </div>
           <Button onClick={() => setCreating(true)} className="gap-1.5">
             <Plus className="h-4 w-4" />
-            Nuevo endpoint
+            Nueva conexión
           </Button>
         </EmptyHero>
       ) : (
         <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
           {/* Lista */}
           <aside className="space-y-3 lg:sticky lg:top-6 lg:self-start">
-            <div className="overflow-hidden rounded-xl border border-border bg-card">
+            <div className="overflow-hidden surface rounded-2xl">
               <ul className="divide-y divide-border">
                 {endpoints.map((ep) => {
                   const active = ep.id === selected?.id

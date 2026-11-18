@@ -77,7 +77,7 @@ function NewEndpointForm({
   return (
     <DialogContent onClose={onClose}>
       <DialogHeader>
-        <DialogTitle>Nuevo endpoint</DialogTitle>
+        <DialogTitle>Nueva conexión</DialogTitle>
         <DialogDescription>Elige un punto de partida. Después podrás ajustar el mapeo y los avisos.</DialogDescription>
       </DialogHeader>
 
@@ -151,7 +151,7 @@ function NewEndpointForm({
           </Button>
           <Button type="submit" disabled={saving || !name.trim() || (repeat && !validRepeatMinutes(repeatMinutes))} className="gap-1.5">
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-            Crear endpoint
+            Crear conexión
           </Button>
         </DialogFooter>
       </form>

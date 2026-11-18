@@ -24,8 +24,8 @@ export function SettingsView() {
   return (
     <div className="space-y-6 max-w-3xl">
       <PageHeader
-        title="Configuración"
-        description="Notificaciones, sonido, sincronización con el calendario y apariencia."
+        title="Ajustes"
+        description="Cómo te avisa la app, sonido, calendario y apariencia."
       />
 
       <div className="grid gap-6">
@@ -164,7 +164,7 @@ export function SettingsView() {
               <div className="space-y-0.5">
                 <span className="text-sm font-semibold text-foreground">Color principal</span>
                 <p className="text-xs text-muted-foreground">
-                  Blanco y negro por defecto. Elige uno de los 6 colores o el tuyo propio.
+                  Blanco y negro por defecto. Elige uno de los 6 colores o el tuyo propio: el fondo se tiñe suavemente con él.
                 </p>
               </div>
               <AccentPicker />

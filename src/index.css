@@ -6,32 +6,28 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* ─────────────────────────────────────────────────
-   Design Tokens — Light Theme (default)
+   Design tokens. Monochrome by default; the user-chosen
+   accent overrides the primary (and the background
+   glows follow it) via [data-accent] below.
    ───────────────────────────────────────────────── */
 @theme {
-  /* Neutral base (zinc). Primary is monochrome by default:
-     near-black on light, near-white on dark. The user-chosen
-     accent overrides it via [data-accent] below. */
+  /* Light theme (default). Neutral zinc base; the primary is monochrome
+     (near-black on light, near-white on dark) unless the user picks an accent. */
   --color-background: hsl(0 0% 98%);
   --color-foreground: hsl(240 10% 3.9%);
 
-  /* Card */
   --color-card: hsl(0 0% 100%);
   --color-card-foreground: hsl(240 10% 3.9%);
 
-  /* Popover */
   --color-popover: hsl(0 0% 100%);
   --color-popover-foreground: hsl(240 10% 3.9%);
 
-  /* Primary */
   --color-primary: hsl(240 5.9% 10%);
   --color-primary-foreground: hsl(0 0% 98%);
 
-  /* Secondary */
   --color-secondary: hsl(240 4.8% 95.9%);
   --color-secondary-foreground: hsl(240 5.9% 10%);
 
-  /* Muted */
   --color-muted: hsl(240 4.8% 95.9%);
   --color-muted-foreground: hsl(240 3.8% 42%);
 
@@ -39,11 +35,12 @@
   --color-accent: hsl(240 4.8% 94%);
   --color-accent-foreground: hsl(240 5.9% 10%);
 
-  /* Status */
+  /* Status (and the teal used for calendar data) */
   --color-destructive: hsl(0 72% 45%);
   --color-destructive-foreground: hsl(0 0% 98%);
   --color-success: hsl(152 65% 30%);
   --color-warning: hsl(30 90% 38%);
+  --color-brand-3: hsl(176 72% 34%);
 
   /* Border / Input / Ring */
   --color-border: hsl(240 5.9% 90%);
@@ -54,8 +51,8 @@
   --color-code: hsl(240 5% 96%);
   --color-code-foreground: hsl(240 6% 18%);
 
-  /* Sidebar */
-  --color-sidebar: hsl(0 0% 97%);
+  /* Sidebar (floating glass panel) */
+  --color-sidebar: hsl(0 0% 100%);
   --color-sidebar-foreground: hsl(240 5.9% 10%);
   --color-sidebar-primary: hsl(240 5.9% 10%);
   --color-sidebar-primary-foreground: hsl(0 0% 98%);
@@ -65,21 +62,23 @@
   --color-sidebar-ring: hsl(240 5.9% 10%);
 
   /* Border Radius */
-  --radius: 0.75rem;
+  --radius: 0.9rem;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
   /* Fonts */
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Bricolage Grotesque", "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
 
   /* Custom Animations */
   --animate-pulse-subtle: pulse-subtle 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   --animate-ping-slow: ping-slow 2s cubic-bezier(0, 0, 0.2, 1) infinite;
   --animate-fade-in: fade-in 0.25s ease-out forwards;
   --animate-slide-down: slide-down 0.3s ease-out forwards;
+  --animate-signal: signal 2.4s cubic-bezier(0, 0, 0.2, 1) infinite;
 
   @keyframes pulse-subtle {
     0%, 100% { opacity: 1; transform: scale(1); }
@@ -96,6 +95,20 @@
     from { opacity: 0; transform: translateY(-12px); }
     to { opacity: 1; transform: translateY(0); }
   }
+  /* Brand mark: a ring that radiates like a signal */
+  @keyframes signal {
+    0% { transform: scale(1); opacity: 0.55; }
+    80%, 100% { transform: scale(1.55); opacity: 0; }
+  }
+}
+
+/* Glow strength per theme (used by the aurora background) */
+:root {
+  --glow-1: 7%;
+  --glow-2: 4%;
+  --grain-opacity: 0.025;
+  --surface-highlight: rgb(255 255 255 / 0.7);
+  --surface-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px -12px rgb(0 0 0 / 0.1);
 }
 
 /* ─────────────────────────────────────────────────
@@ -121,19 +134,26 @@
   --color-destructive-foreground: hsl(0 0% 98%);
   --color-success: hsl(152 55% 52%);
   --color-warning: hsl(38 92% 58%);
+  --color-brand-3: hsl(176 70% 48%);
   --color-border: hsl(240 3.7% 16%);
   --color-input: hsl(240 3.7% 20%);
   --color-ring: hsl(0 0% 83%);
   --color-code: hsl(240 6% 5%);
   --color-code-foreground: hsl(240 5% 84%);
-  --color-sidebar: hsl(240 8% 5%);
+  --color-sidebar: hsl(240 8% 6%);
   --color-sidebar-foreground: hsl(0 0% 96%);
   --color-sidebar-primary: hsl(0 0% 96%);
   --color-sidebar-primary-foreground: hsl(240 5.9% 10%);
   --color-sidebar-accent: hsl(240 3.7% 13%);
   --color-sidebar-accent-foreground: hsl(0 0% 96%);
-  --color-sidebar-border: hsl(240 3.7% 13%);
+  --color-sidebar-border: hsl(240 3.7% 14%);
   --color-sidebar-ring: hsl(0 0% 83%);
+
+  --glow-1: 7%;
+  --glow-2: 4%;
+  --grain-opacity: 0.04;
+  --surface-highlight: rgb(255 255 255 / 0.05);
+  --surface-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 12px 32px -16px rgb(0 0 0 / 0.6);
 }
 
 /* ─────────────────────────────────────────────────
@@ -195,18 +215,40 @@
     cursor: not-allowed;
   }
 
+  /* Aurora: soft glows that follow the primary color, fixed behind the content */
   body {
     background-color: var(--color-background);
+    background-image:
+      radial-gradient(52rem 34rem at 28% -14%, color-mix(in oklch, var(--color-primary) var(--glow-1), transparent), transparent 62%),
+      radial-gradient(46rem 32rem at 108% 110%, color-mix(in oklch, var(--color-primary) var(--glow-2), transparent), transparent 60%);
+    background-attachment: fixed;
     color: var(--color-foreground);
     font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv11";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow-x: hidden;
   }
 
+  /* Fine grain over the glows (keeps gradients from banding) */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    pointer-events: none;
+    opacity: var(--grain-opacity);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  h1 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+
   ::selection {
-    background-color: color-mix(in oklch, var(--color-primary), transparent 80%);
-    color: var(--color-primary);
+    background-color: color-mix(in oklch, var(--color-primary), transparent 75%);
+    color: var(--color-foreground);
   }
 }
 
@@ -229,8 +271,54 @@
 }
 
 /* ─────────────────────────────────────────────────
-   Utility Classes
+   Surfaces & brand utilities
    ───────────────────────────────────────────────── */
+
+/* Card surface: a touch translucent over the aurora, top highlight, soft depth */
+@utility surface {
+  background-color: color-mix(in oklch, var(--color-card), transparent 12%);
+  border: 1px solid color-mix(in oklch, var(--color-border), transparent 15%);
+  box-shadow: inset 0 1px 0 0 var(--surface-highlight), var(--surface-shadow);
+}
+
+/* Floating glass panel (sidebar, top bar) */
+@utility glass-float {
+  background-color: color-mix(in oklch, var(--color-sidebar), transparent 22%);
+  backdrop-filter: blur(22px) saturate(1.4);
+  -webkit-backdrop-filter: blur(22px) saturate(1.4);
+  border: 1px solid color-mix(in oklch, var(--color-sidebar-border), transparent 10%);
+  box-shadow:
+    inset 0 1px 0 0 var(--surface-highlight),
+    0 24px 48px -24px rgb(0 0 0 / 0.4),
+    0 2px 6px rgb(0 0 0 / 0.06);
+}
+
+/* Primary gradient for marks and key actions (a gentle shade of the primary) */
+@utility bg-brand {
+  background-image: linear-gradient(
+    135deg,
+    var(--color-primary) 0%,
+    color-mix(in oklch, var(--color-primary), var(--color-background) 18%) 100%
+  );
+}
+
+/* Gradient text for highlights */
+@utility text-brand {
+  background-image: linear-gradient(
+    100deg,
+    var(--color-primary),
+    color-mix(in oklch, var(--color-primary), var(--color-muted-foreground) 45%)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Soft glow under primary actions (tinted when an accent color is chosen) */
+@utility glow-primary {
+  box-shadow: 0 6px 20px -8px color-mix(in oklch, var(--color-primary), transparent 50%);
+}
+
 @layer utilities {
   .glass-panel {
     background-color: color-mix(in oklch, var(--color-card), transparent 25%);
@@ -245,7 +333,6 @@
     -webkit-backdrop-filter: blur(20px);
     border: 1px solid color-mix(in oklch, var(--color-border), transparent 10%);
   }
-
 }
 
 /* ─────────────────────────────────────────────────
@@ -255,6 +342,10 @@ html.notify-window,
 html.notify-window body {
   background: transparent !important;
   overflow: hidden;
+}
+
+html.notify-window body::after {
+  display: none;
 }
 
 @keyframes notify-countdown {

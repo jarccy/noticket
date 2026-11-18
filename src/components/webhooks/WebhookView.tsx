@@ -112,11 +112,11 @@ export function WebhookView() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Webhooks & Logs"
+        title="Notificaciones"
         description={
           admin
-            ? 'Inspecciona los payloads recibidos y consulta cómo integrar tus servicios.'
-            : 'Todas las notificaciones que has recibido, con su detalle.'
+            ? 'Todos los avisos recibidos, con su contenido completo y cómo conectar tus servicios.'
+            : 'Todos los avisos que has recibido. Ábrelos para ver el detalle, márcalos como vistos o bórralos.'
         }
         actions={
           user && (
@@ -212,7 +212,7 @@ export function WebhookView() {
           )}
 
           {/* Log list */}
-          <div className="overflow-hidden rounded-xl border border-border bg-card">
+          <div className="overflow-hidden surface rounded-2xl">
             {filteredEvents.length === 0 ? (
               <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">
                 <Inbox className="h-6 w-6 text-muted-foreground/50" />
@@ -362,7 +362,7 @@ export function WebhookView() {
             <section className="space-y-3">
               <h2 className="text-sm font-semibold text-foreground">Endpoint</h2>
               <div className="space-y-2">
-                <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
+                <div className="flex items-center gap-3 surface rounded-2xl p-3">
                   <span className="rounded-md bg-success/10 px-2 py-0.5 font-mono text-[11px] font-semibold text-success">POST</span>
                   <span className="flex-1 truncate font-mono text-sm text-foreground">{WEBHOOK_ENDPOINT}</span>
                   <CopyButton copied={copiedKey === 'ep'} onClick={() => copy('ep', WEBHOOK_ENDPOINT)} />

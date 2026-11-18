@@ -102,7 +102,7 @@ export function MemberPicker({
       )}
 
       {shown.length > 0 && (
-        <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+        <ul className="divide-y divide-border overflow-hidden surface rounded-2xl">
           {shown.map((u) => {
             const isMember = memberIds.includes(u.id)
             return (

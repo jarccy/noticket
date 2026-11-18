@@ -170,7 +170,7 @@ export function CalendarView() {
     <div className="space-y-6">
       <PageHeader
         title="Calendario"
-        description="Eventos agendados a mano o sincronizados desde webhooks con fecha."
+        description="Tus citas y recordatorios, creados a mano o a partir de avisos que traen fecha."
         actions={
         <>
           <Button variant="outline" size="sm" onClick={handleToday}>

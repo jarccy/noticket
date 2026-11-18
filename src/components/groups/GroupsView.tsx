@@ -102,7 +102,7 @@ function GroupsPanel() {
           </Button>
         </div>
 
-        <div className="overflow-hidden rounded-xl border border-border bg-card">
+        <div className="overflow-hidden surface rounded-2xl">
           {loading ? (
             <div className="space-y-px">
               {[0, 1, 2].map((i) => (
@@ -241,7 +241,7 @@ function GroupDetail({ group, onChanged }: { group: Group; onChanged: () => void
   return (
     <section className="min-w-0 space-y-5">
       {/* Header */}
-      <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-5 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-4 surface rounded-2xl p-5 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-1">
           <h2 className="truncate text-lg font-semibold tracking-tight text-foreground">{group.name}</h2>
           {group.description && <p className="text-sm text-muted-foreground">{group.description}</p>}
@@ -302,7 +302,7 @@ function GroupDetail({ group, onChanged }: { group: Group; onChanged: () => void
       {/* Members */}
       <div className="space-y-3">
         <h3 className="text-sm font-semibold text-foreground">Miembros</h3>
-        <div className="overflow-hidden rounded-xl border border-border bg-card">
+        <div className="overflow-hidden surface rounded-2xl">
           {!detail ? (
             <div className="flex items-center justify-center py-10">
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />

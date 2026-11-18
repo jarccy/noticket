@@ -89,7 +89,7 @@ export function UsersAdmin() {
 
       {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
 
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="overflow-hidden surface rounded-2xl">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />

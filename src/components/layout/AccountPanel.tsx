@@ -34,7 +34,7 @@ export function AccountPanel({ collapsed }: { collapsed: boolean }) {
   if (!user) {
     if (collapsed) {
       return (
-        <div className="flex justify-center border-t border-sidebar-border p-3">
+        <div className="flex justify-center p-3">
           <button
             type="button"
             onClick={openAuth}
@@ -49,22 +49,22 @@ export function AccountPanel({ collapsed }: { collapsed: boolean }) {
     }
     return (
       <div className="p-3 pt-0">
-        <div className="rounded-xl border border-sidebar-border bg-card p-3 shadow-sm">
+        <div className="rounded-2xl bg-foreground/[0.04] p-2.5">
           <div className="flex items-start gap-2.5">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-foreground/[0.06] text-muted-foreground">
               <HardDrive className="h-4 w-4" />
             </span>
             <div className="min-w-0">
-              <p className="text-xs font-semibold text-foreground">Modo local</p>
+              <p className="text-xs font-semibold text-foreground">Solo en este equipo</p>
               <p className="text-[11px] leading-snug text-muted-foreground">
-                Inicia sesión para recibir webhooks y sincronizar tus datos.
+                Inicia sesión para guardar tus datos en la nube.
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={openAuth}
-            className="mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-linear-to-br from-primary to-primary/80 text-sm font-medium text-primary-foreground shadow-md shadow-primary/20 transition-all hover:shadow-lg hover:shadow-primary/30 active:scale-[0.98]"
+            className="mt-2.5 flex h-8 w-full items-center justify-center gap-2 rounded-xl bg-brand text-sm font-semibold text-primary-foreground glow-primary transition-all hover:brightness-110 active:scale-[0.98]"
           >
             <LogIn className="h-4 w-4" />
             Iniciar sesión
@@ -85,7 +85,7 @@ export function AccountPanel({ collapsed }: { collapsed: boolean }) {
           disabled={syncing || pendingSync === 0}
           title={feedback?.text ?? `Subir a la base ${pendingSync} elementos guardados en este equipo`}
           className={cn(
-            'flex h-9 items-center justify-center gap-2 rounded-lg text-sm font-medium transition-colors active:scale-[0.98] disabled:cursor-default',
+            'flex h-9 items-center justify-center gap-2 rounded-xl text-sm font-medium transition-colors active:scale-[0.98] disabled:cursor-default',
             collapsed ? 'w-9' : 'w-full',
             feedback?.tone === 'ok'
               ? 'bg-success/10 text-success'
@@ -114,7 +114,7 @@ export function AccountPanel({ collapsed }: { collapsed: boolean }) {
       <div
         className={cn(
           'flex items-center gap-2.5',
-          collapsed ? 'flex-col gap-1' : 'rounded-xl border border-sidebar-border bg-card p-2 shadow-sm'
+          collapsed ? 'flex-col gap-1' : 'rounded-2xl bg-foreground/[0.04] p-2'
         )}
       >
         {user.avatarUrl ? (

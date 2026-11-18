@@ -68,33 +68,33 @@ flowchart LR
     UI -- "API REST" --> B
 ```
 
-| Parte | Tecnología | Carpeta |
-|---|---|---|
-| Interfaz | React 19, TypeScript, Vite, Tailwind CSS 4 | [`src/`](src) |
+| Parte             | Tecnología                                                                                             | Carpeta                   |
+| ----------------- | ------------------------------------------------------------------------------------------------------ | ------------------------- |
+| Interfaz          | React 19, TypeScript, Vite, Tailwind CSS 4                                                             | [`src/`](src)             |
 | App de escritorio | Tauri 2 (Rust): bandeja, ventana de avisos, servidor HTTP local, SQLite, programación de recordatorios | [`src-tauri/`](src-tauri) |
-| Backend | Go, Gin, pgx, PostgreSQL, SSE | [`backend/`](backend) |
+| Backend           | Go, Gin, pgx, PostgreSQL, SSE                                                                          | [`backend/`](backend)     |
 
 **Modos de funcionamiento**
 
-| | Sin sesión (local) | Con sesión (servidor) |
-|---|---|---|
-| Dónde se guardan endpoints, historial y calendario | SQLite en el equipo (app de escritorio) o `localStorage` (navegador) | PostgreSQL |
-| URL de los webhooks | `http://<IP-del-equipo>:3690/webhook/<id>` | `<API_URL>/webhook/<id>` |
-| Recibe webhooks | Mientras la app está abierta o en la bandeja | Siempre (el servidor los guarda y los entrega al conectar) |
-| Cuentas, roles y grupos | — | Sí |
+|                                                    | Sin sesión (local)                                                   | Con sesión (servidor)                                      |
+| -------------------------------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Dónde se guardan endpoints, historial y calendario | SQLite en el equipo (app de escritorio) o `localStorage` (navegador) | PostgreSQL                                                 |
+| URL de los webhooks                                | `http://<IP-del-equipo>:3690/webhook/<id>`                           | `<API_URL>/webhook/<id>`                                   |
+| Recibe webhooks                                    | Mientras la app está abierta o en la bandeja                         | Siempre (el servidor los guarda y los entrega al conectar) |
+| Cuentas, roles y grupos                            | —                                                                    | Sí                                                         |
 
 > En el navegador sin sesión no hay nada que reciba HTTP: los endpoints solo están disponibles en la app de escritorio o con sesión.
 
 ## Requisitos
 
-| Herramienta | Versión | Para |
-|---|---|---|
-| [Node.js](https://nodejs.org) | 22 o superior | Interfaz |
-| [pnpm](https://pnpm.io) | 12.5.1 (fijada en `package.json`) | Dependencias de la interfaz |
-| [Rust](https://rustup.rs) | 1.90 o superior | App de escritorio |
-| Requisitos de Tauri | [ver guía](https://v2.tauri.app/start/prerequisites/) (en Windows: WebView2 y Build Tools de C++) | App de escritorio |
-| [Go](https://go.dev) | 1.26 o superior | Backend |
-| [PostgreSQL](https://www.postgresql.org) | 13 o superior | Backend |
+| Herramienta                              | Versión                                                                                           | Para                        |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------- | --------------------------- |
+| [Node.js](https://nodejs.org)            | 22 o superior                                                                                     | Interfaz                    |
+| [pnpm](https://pnpm.io)                  | 12.5.1 (fijada en `package.json`)                                                                 | Dependencias de la interfaz |
+| [Rust](https://rustup.rs)                | 1.90 o superior                                                                                   | App de escritorio           |
+| Requisitos de Tauri                      | [ver guía](https://v2.tauri.app/start/prerequisites/) (en Windows: WebView2 y Build Tools de C++) | App de escritorio           |
+| [Go](https://go.dev)                     | 1.26 o superior                                                                                   | Backend                     |
+| [PostgreSQL](https://www.postgresql.org) | 13 o superior                                                                                     | Backend                     |
 
 El backend es opcional: la app de escritorio funciona sola.
 
@@ -153,30 +153,31 @@ pnpm tauri build
 <summary><b>Problema conocido: «pnpm no se reconoce como un comando» en Windows</b></summary>
 
 Si tu pnpm global es anterior a la 12, puede descargar pnpm 12.5.1 sin ejecutar su script de instalación, y queda un ejecutable incompleto. Solución: actualiza el pnpm global (`npm i -g pnpm@12`), o ejecuta `node install.js` dentro de `%LOCALAPPDATA%\pnpm\.tools\pnpm\12.5.1\node_modules\pnpm`.
+
 </details>
 
 ## Configuración
 
 ### Interfaz
 
-| Variable | Por defecto | Descripción |
-|---|---|---|
+| Variable       | Por defecto             | Descripción     |
+| -------------- | ----------------------- | --------------- |
 | `VITE_API_URL` | `http://localhost:8080` | URL del backend |
 
 ### Backend (`backend/.env`)
 
-| Variable | Por defecto | Descripción |
-|---|---|---|
-| `DATABASE_URL` | `postgres://postgres:postgres@localhost:5432/dbnoticket?sslmode=disable` | Conexión a PostgreSQL |
-| `PORT` | `8080` | Puerto HTTP |
-| `FRONTEND_URL` | `http://localhost:5173` | URL de la interfaz (redirecciones de login y enlaces de correo) |
-| `CORS_ORIGINS` | `FRONTEND_URL` | Orígenes permitidos, separados por coma |
-| `PUBLIC_URL` | `http://localhost:PORT` | URL pública del backend (callback de Google) |
-| `ADMIN_EMAILS` | — | Correos que serán admin. Solo se aplica a cuentas con el correo verificado (login con Google) |
-| `TRUSTED_PROXIES` | — | IPs o CIDR de proxies inversos de confianza. Vacío = no se confía en `X-Forwarded-For` |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | — | Login con Google (opcional) |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | — | Correo de «restablecer contraseña». Sin SMTP, el enlace se imprime en el log |
-| `GIN_MODE` | `debug` | `debug` o `release` |
+| Variable                                                            | Por defecto                                                              | Descripción                                                                                   |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                                      | `postgres://postgres:postgres@localhost:5432/dbnoticket?sslmode=disable` | Conexión a PostgreSQL                                                                         |
+| `PORT`                                                              | `8080`                                                                   | Puerto HTTP                                                                                   |
+| `FRONTEND_URL`                                                      | `http://localhost:5173`                                                  | URL de la interfaz (redirecciones de login y enlaces de correo)                               |
+| `CORS_ORIGINS`                                                      | `FRONTEND_URL`                                                           | Orígenes permitidos, separados por coma                                                       |
+| `PUBLIC_URL`                                                        | `http://localhost:PORT`                                                  | URL pública del backend (callback de Google)                                                  |
+| `ADMIN_EMAILS`                                                      | —                                                                        | Correos que serán admin. Solo se aplica a cuentas con el correo verificado (login con Google) |
+| `TRUSTED_PROXIES`                                                   | —                                                                        | IPs o CIDR de proxies inversos de confianza. Vacío = no se confía en `X-Forwarded-For`        |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`                          | —                                                                        | Login con Google (opcional)                                                                   |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | —                                                                        | Correo de «restablecer contraseña». Sin SMTP, el enlace se imprime en el log                  |
+| `GIN_MODE`                                                          | `debug`                                                                  | `debug` o `release`                                                                           |
 
 Todos los endpoints de la API, las tablas y el modelo de borrado lógico están documentados en [`backend/README.md`](backend/README.md).
 
@@ -197,14 +198,14 @@ curl -X POST http://localhost:3690/webhook/ep_1234abcd \
 
 ### Campos que se detectan automáticamente
 
-| Campo del aviso | Se busca en |
-|---|---|
-| Título | `title`, `subject`, `event` (o `"Evento: <action>"`) |
-| Mensaje | `message`, `description`, `text`, `content`, `details`, `summary` |
-| Tipo | `type`, `level`, `status`, `severity`. Si contiene `succ`/`ok`/`pass` → éxito; `warn`/`alert` → alerta; `err`/`fail`/`crit` → error; `cal`/`meet`/`event` o hay fecha → calendario; si no, info |
-| Fecha / hora | `date` (`YYYY-MM-DD`), `time` (`HH:mm`). Con fecha se agenda en el calendario |
-| Origen | `source`, `sender`, `app` (o el nombre del endpoint) |
-| Categoría | `category` |
+| Campo del aviso | Se busca en                                                                                                                                                                                     |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Título          | `title`, `subject`, `event` (o `"Evento: <action>"`)                                                                                                                                            |
+| Mensaje         | `message`, `description`, `text`, `content`, `details`, `summary`                                                                                                                               |
+| Tipo            | `type`, `level`, `status`, `severity`. Si contiene `succ`/`ok`/`pass` → éxito; `warn`/`alert` → alerta; `err`/`fail`/`crit` → error; `cal`/`meet`/`event` o hay fecha → calendario; si no, info |
+| Fecha / hora    | `date` (`YYYY-MM-DD`), `time` (`HH:mm`). Con fecha se agenda en el calendario                                                                                                                   |
+| Origen          | `source`, `sender`, `app` (o el nombre del endpoint)                                                                                                                                            |
+| Categoría       | `category`                                                                                                                                                                                      |
 
 Con sesión, un usuario `boss` o `admin` puede incluir `"groupIds": [...]` en el payload para repartir el aviso a sus grupos.
 
@@ -229,10 +230,10 @@ Las mismas reglas se aplican en los tres sitios donde se interpreta un payload, 
 
 Solo con servidor.
 
-| Rol | Puede |
-|---|---|
-| `user` | Gestionar sus endpoints, historial, calendario y ajustes; recibir lo que le envían |
-| `boss` | Lo anterior, y además crear grupos, gestionar sus miembros y enviarles notificaciones |
+| Rol     | Puede                                                                                           |
+| ------- | ----------------------------------------------------------------------------------------------- |
+| `user`  | Gestionar sus endpoints, historial, calendario y ajustes; recibir lo que le envían              |
+| `boss`  | Lo anterior, y además crear grupos, gestionar sus miembros y enviarles notificaciones           |
 | `admin` | Todo: ver los datos de todos (`?scope=all`), enviar a cualquier grupo o usuario y cambiar roles |
 
 ## Estructura del proyecto
@@ -272,14 +273,14 @@ Solo con servidor.
 
 ## Scripts
 
-| Comando | Descripción |
-|---|---|
-| `pnpm dev` | Interfaz en el navegador (http://localhost:5173) |
-| `pnpm build` | Comprueba los tipos y genera `dist/` |
-| `pnpm lint` | Lint con oxlint |
-| `pnpm tauri dev` | App de escritorio en desarrollo |
-| `pnpm tauri build` | Instalador de la app de escritorio |
-| `go run ./cmd/server` (en `backend/`) | Backend |
+| Comando                               | Descripción                                      |
+| ------------------------------------- | ------------------------------------------------ |
+| `pnpm dev`                            | Interfaz en el navegador (http://localhost:5173) |
+| `pnpm build`                          | Comprueba los tipos y genera `dist/`             |
+| `pnpm lint`                           | Lint con oxlint                                  |
+| `pnpm tauri dev`                      | App de escritorio en desarrollo                  |
+| `pnpm tauri build`                    | Instalador de la app de escritorio               |
+| `go run ./cmd/server` (en `backend/`) | Backend                                          |
 
 ## Tests
 
@@ -305,15 +306,15 @@ Resumen del modelo de seguridad:
 
 Los secretos de los webhooks se guardan en claro (en PostgreSQL o SQLite) para poder mostrarlos en la interfaz. Protege el acceso a la base de datos y al equipo.
 
-**Reportar una vulnerabilidad:** no abras un issue público. Usa [«Report a vulnerability»](https://github.com/jarccy/noticket/security/advisories/new) en la pestaña *Security* del repositorio, con los pasos para reproducirla. Intentaremos responder en un plazo razonable y te daremos crédito en la corrección, si lo deseas.
+**Reportar una vulnerabilidad:** no abras un issue público. Usa [«Report a vulnerability»](https://github.com/jarccy/noticket/security/advisories/new) en la pestaña _Security_ del repositorio, con los pasos para reproducirla. Intentaremos responder en un plazo razonable y te daremos crédito en la corrección, si lo deseas.
 
 ## Contribuir
 
 ¡Las contribuciones son bienvenidas!
 
-1. Abre un *issue* para comentar el cambio antes de empezar si es grande.
+1. Abre un _issue_ para comentar el cambio antes de empezar si es grande.
 2. Haz un fork, crea una rama (`git checkout -b feat/mi-cambio`) y haz commits pequeños. El historial usa el prefijo `feat:` / `fix:` ([Conventional Commits](https://www.conventionalcommits.org/es/)).
-3. Antes de abrir el *pull request*, comprueba que pasan:
+3. Antes de abrir el _pull request_, comprueba que pasan:
 
    ```bash
    pnpm build && pnpm lint
@@ -329,4 +330,4 @@ Los secretos de los webhooks se guardan en claro (en PostgreSQL o SQLite) para p
 
 ## Licencia
 
-[MIT](LICENSE) © 2026 Jar
+[MIT](LICENSE) © 2026 Jarcy
