@@ -12,12 +12,14 @@ import {
 } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
 import { AccentPicker } from '@/components/settings/AccentPicker'
+import { LocalWebhookCard } from '@/components/settings/LocalWebhookCard'
+import { isTauri } from '@/lib/platform'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 
 export function SettingsView() {
-  const { settings, updateSettings, triggerNotificationTest } = useApp()
+  const { settings, updateSettings, triggerNotificationTest, mode } = useApp()
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -27,6 +29,9 @@ export function SettingsView() {
       />
 
       <div className="grid gap-6">
+        {/* Modo local: webhooks directos a la app de escritorio */}
+        {isTauri() && mode === 'local' && <LocalWebhookCard />}
+
         {/* Notificaciones & Audio */}
         <Card className="border-border/80">
           <CardHeader>

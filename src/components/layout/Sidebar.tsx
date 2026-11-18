@@ -96,9 +96,18 @@ function useNavItems() {
 function GatewayStatus() {
   const { isGatewayOnline } = useApp()
   const { user } = useAuth()
-  // Sin sesión no se reciben webhooks externos: solo se trabaja en local
-  const online = !!user && isGatewayOnline
-  const label = !user ? 'Modo local' : isGatewayOnline ? (isTauri() ? 'Escuchando en :3690' : 'Conectado') : 'Sin conexión'
+  // Sin sesión: en el escritorio la app recibe webhooks directamente (modo local)
+  const localListening = !user && isTauri() && isGatewayOnline
+  const online = (!!user && isGatewayOnline) || localListening
+  const label = !user
+    ? localListening
+      ? 'Modo local · :3690'
+      : 'Modo local'
+    : isGatewayOnline
+      ? isTauri()
+        ? 'Escuchando en :3690'
+        : 'Conectado'
+      : 'Sin conexión'
   return (
     <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
       <span className="relative flex h-1.5 w-1.5 shrink-0">
@@ -106,7 +115,7 @@ function GatewayStatus() {
         <span
           className={cn(
             'relative h-1.5 w-1.5 rounded-full',
-            !user ? 'bg-muted-foreground/50' : isGatewayOnline ? 'bg-success' : 'bg-warning'
+            online ? 'bg-success' : !user ? 'bg-muted-foreground/50' : 'bg-warning'
           )}
         />
       </span>

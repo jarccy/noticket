@@ -9,6 +9,13 @@ const STORAGE_KEYS = {
   EVENTS: 'noticket_events',
   CALENDAR: 'noticket_calendar',
   SETTINGS: 'noticket_settings',
+  LOCAL_SECRET: 'noticket_local_webhook_secret',
+}
+
+function randomSecret(): string {
+  const bytes = new Uint8Array(24)
+  crypto.getRandomValues(bytes)
+  return 'lk_' + Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
 // Datos de ejemplo de versiones anteriores: nunca se muestran ni se sincronizan
@@ -71,6 +78,30 @@ export const Storage = {
   /** Cuántos elementos locales faltan por subir a la base. */
   pendingCount(): number {
     return this.getEvents().length + this.getCalendarEvents().length
+  },
+
+  /**
+   * Secreto del modo local (sin backend): autoriza los webhooks que llegan al puerto 3690
+   * desde otros equipos. Se crea la primera vez y no sale de este equipo.
+   */
+  getLocalWebhookSecret(): string {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.LOCAL_SECRET)
+      if (saved) return saved
+    } catch {
+      // sin localStorage: se genera uno nuevo
+    }
+    return this.regenerateLocalWebhookSecret()
+  },
+
+  regenerateLocalWebhookSecret(): string {
+    const secret = randomSecret()
+    try {
+      localStorage.setItem(STORAGE_KEYS.LOCAL_SECRET, secret)
+    } catch (e) {
+      console.warn('Could not save local webhook secret', e)
+    }
+    return secret
   },
 
   getSettings(): AppSettings {

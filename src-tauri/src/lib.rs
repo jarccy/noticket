@@ -23,8 +23,8 @@ struct GatewayState {
 /// throttles/suspends a hidden window's JavaScript).
 static POPUPS_ENABLED: AtomicBool = AtomicBool::new(true);
 
-/// Without a session the app only creates its own notifications: the local
-/// HTTP server rejects external webhooks until the frontend reports a login.
+/// Without a session the local HTTP server works in "local mode": it accepts
+/// webhooks from this machine, and from other devices only with the local secret.
 pub(crate) static SESSION_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 /// Show an event in the popup window. A hidden webview may be frozen, so the
@@ -59,6 +59,22 @@ fn ingest_webhook(app: AppHandle, payload: Value) -> webhook::WebhookEvent {
 #[tauri::command]
 fn set_session_active(active: bool) {
   SESSION_ACTIVE.store(active, Ordering::Relaxed);
+}
+
+/// Secret that authorizes webhooks from other devices while there is no session.
+#[tauri::command]
+fn set_local_webhook_secret(secret: String) {
+  webhook::set_local_secret(secret);
+}
+
+/// Addresses where the local server receives webhooks: this machine and the LAN.
+#[tauri::command]
+fn local_webhook_urls() -> Vec<String> {
+  let mut urls = vec![format!("http://localhost:{}/webhook", webhook::PORT)];
+  if let Some(ip) = webhook::lan_ip() {
+    urls.push(format!("http://{ip}:{}/webhook", webhook::PORT));
+  }
+  urls
 }
 
 #[tauri::command]
@@ -182,6 +198,8 @@ pub fn run() {
       show_notification,
       set_popups_enabled,
       set_session_active,
+      set_local_webhook_secret,
+      local_webhook_urls,
       set_reminders,
       layout_notifications,
       open_main

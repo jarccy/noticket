@@ -2,8 +2,9 @@
 //! app accepts the same payloads as `pnpm dev`.
 
 use std::io::Read;
+use std::net::{IpAddr, UdpSocket};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
@@ -12,6 +13,58 @@ use tauri::{AppHandle, Emitter};
 use tiny_http::{Header, Method, Response, Server};
 
 pub const PORT: u16 = 3690;
+
+/// Secret that authorizes webhooks in local mode (no backend session). The
+/// frontend generates it, keeps it in localStorage and hands it over at startup.
+static LOCAL_SECRET: Mutex<String> = Mutex::new(String::new());
+
+pub fn set_local_secret(secret: String) {
+  if let Ok(mut s) = LOCAL_SECRET.lock() {
+    *s = secret.trim().to_string();
+  }
+}
+
+/// Primary LAN IPv4 (the one the OS would use to reach the internet). Connecting a
+/// UDP socket sends no packets: it only picks the outgoing interface.
+pub fn lan_ip() -> Option<IpAddr> {
+  let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
+  socket.connect("8.8.8.8:80").ok()?;
+  let ip = socket.local_addr().ok()?.ip();
+  (!ip.is_loopback() && !ip.is_unspecified()).then_some(ip)
+}
+
+fn constant_time_eq(a: &str, b: &str) -> bool {
+  a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+/// Secret sent with the request: `x-webhook-secret`, `Authorization: Bearer` or
+/// `?secret=` (for services that can't set headers).
+fn request_secret(req: &tiny_http::Request) -> Option<String> {
+  for h in req.headers() {
+    if h.field.equiv("x-webhook-secret") {
+      return Some(h.value.as_str().trim().to_string());
+    }
+    if h.field.equiv("authorization") {
+      if let Some(token) = h.value.as_str().trim().strip_prefix("Bearer ") {
+        return Some(token.trim().to_string());
+      }
+    }
+  }
+  req
+    .url()
+    .split_once('?')
+    .and_then(|(_, q)| q.split('&').find_map(|kv| kv.strip_prefix("secret=")))
+    .map(str::to_string)
+}
+
+/// Local mode: this machine is always allowed; other devices need the local secret.
+fn local_mode_authorized(req: &tiny_http::Request) -> bool {
+  if req.remote_addr().is_some_and(|a| a.ip().is_loopback()) {
+    return true;
+  }
+  let expected = LOCAL_SECRET.lock().map(|s| s.clone()).unwrap_or_default();
+  !expected.is_empty() && request_secret(req).is_some_and(|got| constant_time_eq(&got, &expected))
+}
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -184,10 +237,15 @@ pub fn start_server(app: AppHandle, online: Arc<AtomicBool>) {
       let path = req.url().split('?').next().unwrap_or("").to_string();
       let response = match (req.method(), path.as_str()) {
         (Method::Options, _) => json_response(204, Value::Null),
-        (Method::Post, "/webhook" | "/api/webhook") if !crate::SESSION_ACTIVE.load(Ordering::Relaxed) => {
+        (Method::Post, "/webhook" | "/api/webhook")
+          if !crate::SESSION_ACTIVE.load(Ordering::Relaxed) && !local_mode_authorized(&req) =>
+        {
           json_response(
             401,
-            json!({ "status": "error", "message": "Inicia sesión en PulseDesk para recibir webhooks" }),
+            json!({
+              "status": "error",
+              "message": "Secreto local inválido: envíalo en x-webhook-secret, Authorization: Bearer o ?secret="
+            }),
           )
         }
         (Method::Post, "/webhook" | "/api/webhook") => {

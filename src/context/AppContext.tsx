@@ -238,10 +238,12 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
     }
   }, [handleIncomingEvent])
 
-  // Without a session the local Tauri server rejects external webhooks: the app only
-  // creates its own notifications
+  // Without a session the local Tauri server runs in local mode: it accepts webhooks
+  // from this machine, and from other devices only with the local secret
   useEffect(() => {
-    if (isTauri()) invoke('set_session_active', { active: cloud }).catch(() => {})
+    if (!isTauri()) return
+    invoke('set_session_active', { active: cloud }).catch(() => {})
+    invoke('set_local_webhook_secret', { secret: Storage.getLocalWebhookSecret() }).catch(() => {})
   }, [cloud])
 
   // With a session (browser or desktop): listen to SSE `/api/events` from the Go backend
