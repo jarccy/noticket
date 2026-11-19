@@ -13,6 +13,7 @@ import {
 import { useApp } from '@/context/AppContext'
 import { AccentPicker } from '@/components/settings/AccentPicker'
 import { LocalWebhookCard } from '@/components/settings/LocalWebhookCard'
+import { AutostartSetting } from '@/components/settings/AutostartSetting'
 import { isTauri } from '@/lib/platform'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
@@ -59,6 +60,9 @@ export function SettingsView() {
                 onCheckedChange={(val) => updateSettings({ desktopNotificationsEnabled: val })}
               />
             </div>
+
+            {/* Start with Windows (installed app only) */}
+            {isTauri() && <AutostartSetting />}
 
             {/* Audio chimes */}
             <div className="flex items-center justify-between pt-4 border-t border-border/60">

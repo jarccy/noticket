@@ -13,6 +13,7 @@
     "windows": [
       {
         "label": "main",
+        "visible": false,
         "title": "PulseDesk • Webhooks, Dashboard & Calendar",
         "width": 1280,
         "height": 840,

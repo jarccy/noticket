@@ -33,6 +33,7 @@ Funciona **sin servidor** (la app de escritorio recibe los webhooks y los guarda
 ## Características
 
 - **Avisos de escritorio** en una ventana propia (esquina inferior derecha), con sonido según el tipo (éxito, alerta, error, calendario, info). Siguen funcionando con la app minimizada en la bandeja.
+- **Inicio con Windows**: la app instalada arranca sola al encender el equipo y se queda en la bandeja, recibiendo avisos sin necesidad de abrirla. Se activa en el primer arranque y se puede desactivar en **Ajustes → Iniciar con Windows**.
 - **Conexiones configurables**: una URL por servicio (`/webhook/<id>`), cada una con:
   - su propio **secreto**, que se puede regenerar;
   - **activar / pausar**;

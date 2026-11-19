@@ -13,6 +13,10 @@ use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, 
 use tauri_plugin_notification::NotificationExt;
 
 const NOTIFY_LABEL: &str = "notify";
+
+/// Argument the OS passes when it starts the app at login (see the autostart plugin):
+/// the app then stays in the tray instead of opening its window.
+const AUTOSTART_ARG: &str = "--autostart";
 const NOTIFY_WIDTH: f64 = 396.0;
 const NOTIFY_MARGIN: f64 = 12.0;
 
@@ -225,6 +229,11 @@ pub fn run() {
   #[cfg(desktop)]
   {
     builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)));
+    // "Iniciar con Windows": the frontend turns it on or off (Ajustes)
+    builder = builder.plugin(tauri_plugin_autostart::init(
+      tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+      Some(vec![AUTOSTART_ARG]),
+    ));
   }
 
   builder
@@ -298,6 +307,12 @@ pub fn run() {
             }
           }
         });
+      }
+
+      // The main window is created hidden: show it, unless the OS started the app at
+      // login, in which case it waits in the tray (already receiving webhooks)
+      if !std::env::args().any(|a| a == AUTOSTART_ARG) {
+        show_main(app.handle());
       }
 
       webhook::start_server(app.handle().clone(), online.clone());

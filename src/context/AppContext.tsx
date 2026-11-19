@@ -17,6 +17,7 @@ import {
   reminderNotification,
   takeDueReminders,
 } from '@/lib/reminders'
+import { applyAutostartDefault } from '@/lib/autostart'
 import { pendingRepeats, takeDueRepeats } from '@/lib/repeats'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
@@ -320,6 +321,11 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
       unlisteners.forEach((p) => p.then((off) => off()))
     }
   }, [cloud, handleIncomingEvent])
+
+  // Installed app: start with Windows by default (once; the user can turn it off in Ajustes)
+  useEffect(() => {
+    applyAutostartDefault()
+  }, [])
 
   // Without a session the local Tauri server runs in local mode: it accepts webhooks
   // from this machine, and from other devices only with the local secret
