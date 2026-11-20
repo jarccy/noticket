@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import {
   Activity,
   Bell,
+  Paintbrush,
   Check,
   Eye,
   EyeOff,
@@ -26,13 +27,27 @@ import { CodeBlock, CopyButton, useCopy } from '@/components/ui/payload-block'
 import { StatusIcon, relativeTime } from '@/components/ui/status'
 import { NotificationPreview } from '@/components/endpoints/NotificationPreview'
 import { RepeatSetting } from '@/components/endpoints/RepeatSetting'
+import { AppearanceEditor } from '@/components/endpoints/AppearanceEditor'
+import { normalizeAppearance } from '@/lib/notification-style'
 import { PRESETS, endpointMark } from '@/components/endpoints/presets'
 import { validRepeatMinutes } from '@/lib/repeats'
 import { parseWebhookLocally, renderMapping } from '@/lib/webhook-parser'
 import { cn } from '@/lib/utils'
-import type { FieldMapping, MappedField, WebhookEndpoint } from '@/types'
+import type { FieldMapping, MappedField, WebhookEndpoint, WebhookEvent } from '@/types'
 
 type Section = 'connection' | 'config' | 'activity'
+
+/** Aviso de ejemplo para el editor de diseño cuando el payload de prueba no es válido. */
+const SAMPLE_EVENT: WebhookEvent = {
+  id: 'preview',
+  title: 'Nuevo pedido recibido',
+  message: 'Pedido #1234 por 49,90 € · Envío a Madrid',
+  type: 'success',
+  source: 'Tienda online',
+  timestamp: new Date().toISOString(),
+  read: false,
+  rawPayload: {},
+}
 
 const FIELDS: { id: MappedField; label: string; hint: string; placeholder: string }[] = [
   { id: 'title', label: 'Título', hint: 'Primera línea del aviso', placeholder: 'title' },
@@ -66,6 +81,7 @@ function draftOf(ep: WebhookEndpoint): EndpointData {
     sound: ep.sound,
     repeat: ep.repeat,
     repeatMinutes: ep.repeatMinutes,
+    appearance: normalizeAppearance(ep.appearance),
     mapping: { ...ep.mapping },
   }
 }
@@ -85,6 +101,7 @@ const sameDraft = (a: EndpointData, b: EndpointData) =>
   a.sound === b.sound &&
   a.repeat === b.repeat &&
   a.repeatMinutes === b.repeatMinutes &&
+  JSON.stringify(a.appearance) === JSON.stringify(b.appearance) &&
   JSON.stringify(cleanMapping(a.mapping)) === JSON.stringify(cleanMapping(b.mapping))
 
 export function EndpointDetail({
@@ -436,6 +453,7 @@ function ConfigSection({
         sound: draft.sound,
         repeat: draft.repeat,
         repeatMinutes: draft.repeatMinutes,
+        appearance: draft.appearance,
         mapping: cleanMapping(draft.mapping),
       })
       setDraft(draftOf(next))
@@ -492,6 +510,21 @@ function ConfigSection({
             onMinutes={(v) => set('repeatMinutes', v)}
           />
         </div>
+      </Panel>
+
+      <Panel
+        icon={Paintbrush}
+        title="Diseño del aviso"
+        description="Elige cómo se ve cada aviso de esta conexión: estilo, color, icono y cuánto tiempo se queda en pantalla."
+      >
+        <AppearanceEditor
+          value={draft.appearance}
+          onChange={(appearance) => set('appearance', appearance)}
+          sample={{
+            ...(preview ?? SAMPLE_EVENT),
+            source: preview && preview.source !== 'Simulador UI' ? preview.source : draft.name || endpoint.name,
+          }}
+        />
       </Panel>
 
       <Panel
@@ -555,6 +588,7 @@ function ConfigSection({
                   popup={draft.popup}
                   sound={draft.sound}
                   repeatMinutes={draft.repeat ? draft.repeatMinutes : undefined}
+                  appearance={draft.appearance}
                 />
               ) : (
                 <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">

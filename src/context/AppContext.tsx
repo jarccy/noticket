@@ -19,6 +19,7 @@ import {
 } from '@/lib/reminders'
 import { applyAutostartDefault } from '@/lib/autostart'
 import { pendingRepeats, takeDueRepeats } from '@/lib/repeats'
+import { normalizeAppearance } from '@/lib/notification-style'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
@@ -65,7 +66,7 @@ interface AppContextType {
 /** Lo que el usuario edita de un endpoint (id, secreto y contadores los gestiona la app). */
 export type EndpointData = Pick<
   WebhookEndpoint,
-  'name' | 'description' | 'enabled' | 'popup' | 'sound' | 'mapping' | 'repeat' | 'repeatMinutes'
+  'name' | 'description' | 'enabled' | 'popup' | 'sound' | 'mapping' | 'repeat' | 'repeatMinutes' | 'appearance'
 >
 
 export type DataMode = 'local' | 'cloud'
@@ -76,6 +77,11 @@ export interface SyncResult {
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined)
+
+/** Conexiones guardadas antes de existir el diseño de avisos: se completan con el de por defecto. */
+function withAppearance(ep: WebhookEndpoint): WebhookEndpoint {
+  return { ...ep, appearance: normalizeAppearance(ep.appearance) }
+}
 
 /** Escrituras locales: no bloquean la UI; si fallan queda constancia en la consola. */
 function persistLocal(p: Promise<unknown>) {
@@ -130,7 +136,7 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
     setEvents((prev) => mergeById(dbEvents, prev))
     setCalendarEvents(dbCalendar)
     setSettings((prev) => ({ ...prev, ...dbSettings }))
-    setEndpoints(await EndpointsApi.list().catch(() => []))
+    setEndpoints((await EndpointsApi.list().catch(() => [])).map(withAppearance))
   }, [])
 
   // Initial load. Cloud: from the backend. Local: from SQLite (desktop) or localStorage (browser).
@@ -154,7 +160,7 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
       // Something may have arrived while loading: keep it
       setEvents((prev) => mergeById(localEvents, prev))
       setCalendarEvents((prev) => mergeById(localCalendar, prev))
-      setEndpoints(localEndpoints)
+      setEndpoints(localEndpoints.map(withAppearance))
     }
     load().catch((err) => console.warn('[local] no se pudieron cargar los datos locales', err))
     return () => {
@@ -180,10 +186,8 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
         invoke('show_notification', { event }).catch((err) => console.error('Popup failed', err))
         return
       }
-      setToastQueue((prev) => [event, ...prev.slice(0, 3)])
-      setTimeout(() => {
-        dismissToast(event.id)
-      }, 6000)
+      // The card closes itself when its countdown ends (it stays with «hasta cerrarlo»)
+      setToastQueue((prev) => [event, ...prev.filter((t) => t.id !== event.id).slice(0, 3)])
 
       // An endpoint can mute its own notifications
       const withSound = event.sound !== false
@@ -536,6 +540,7 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
               mapping: ep.mapping,
               repeat: ep.repeat,
               repeatMinutes: ep.repeatMinutes,
+              appearance: ep.appearance,
             })
           }
           uploadedEndpoints.push(ep.id)
@@ -585,7 +590,8 @@ export function AppProvider({ mode, children }: { mode: DataMode; children: Reac
 
   const endpointsAvailable = cloud || localStore.supportsEndpoints
 
-  const storeEndpoint = useCallback((saved: WebhookEndpoint) => {
+  const storeEndpoint = useCallback((raw: WebhookEndpoint) => {
+    const saved = withAppearance(raw)
     setEndpoints((prev) =>
       prev.some((ep) => ep.id === saved.id) ? prev.map((ep) => (ep.id === saved.id ? saved : ep)) : [...prev, saved]
     )

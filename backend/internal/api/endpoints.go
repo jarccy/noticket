@@ -58,6 +58,46 @@ type endpointInput struct {
 	Repeat      *bool                `json:"repeat"`
 	// RepeatMinutes: cada cuántos minutos se repite el aviso no visto (1-1440).
 	RepeatMinutes *int `json:"repeatMinutes"`
+	// Appearance: diseño de los avisos (ver validAppearance).
+	Appearance *models.NotificationAppearance `json:"appearance"`
+}
+
+var (
+	appearanceStyles = map[string]bool{"classic": true, "compact": true, "banner": true, "solid": true, "minimal": true}
+	hexColorRe       = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+	iconIDRe         = regexp.MustCompile(`^[a-z0-9-]{1,32}$`)
+)
+
+// validAppearance comprueba el diseño de los avisos; devuelve un mensaje si algo no es válido.
+func validAppearance(a models.NotificationAppearance) string {
+	for key, v := range a {
+		switch key {
+		case "style":
+			if s, ok := v.(string); !ok || !appearanceStyles[s] {
+				return "Estilo de aviso desconocido"
+			}
+		case "color", "icon":
+			if v == nil {
+				continue
+			}
+			s, ok := v.(string)
+			if !ok || (key == "color" && !hexColorRe.MatchString(s)) || (key == "icon" && !iconIDRe.MatchString(s)) {
+				return "Color o icono del aviso inválido"
+			}
+		case "duration":
+			n, ok := v.(float64)
+			if !ok || n != float64(int(n)) || n < 0 || n > 120 {
+				return "El tiempo en pantalla debe estar entre 0 y 120 segundos"
+			}
+		case "showMeta":
+			if _, ok := v.(bool); !ok {
+				return "showMeta debe ser verdadero o falso"
+			}
+		default:
+			return "Opción de diseño desconocida: " + key
+		}
+	}
+	return ""
 }
 
 // apply valida la entrada y la vuelca sobre ep. Devuelve un mensaje si algo no es válido.
@@ -98,6 +138,12 @@ func (in endpointInput) apply(ep *models.WebhookEndpoint) string {
 	if ep.RepeatMinutes < minRepeatMinutes || ep.RepeatMinutes > maxRepeatMinutes {
 		return "El intervalo de repetición debe estar entre 1 y 1440 minutos"
 	}
+	if in.Appearance != nil {
+		if msg := validAppearance(*in.Appearance); msg != "" {
+			return msg
+		}
+		ep.Appearance = *in.Appearance
+	}
 	if in.Mapping != nil {
 		mapping := models.FieldMapping{}
 		for field, spec := range *in.Mapping {
@@ -136,7 +182,7 @@ func (s *Server) createEndpoint(c *gin.Context) {
 	}
 	ep := models.WebhookEndpoint{
 		ID: newEndpointID(), Secret: newEndpointSecret(), UserID: currentUser(c).ID,
-		Enabled: true, Popup: true, Sound: true, Mapping: models.FieldMapping{}, RepeatMinutes: 15,
+		Enabled: true, Popup: true, Sound: true, Mapping: models.FieldMapping{}, RepeatMinutes: 15, Appearance: models.NotificationAppearance{},
 	}
 	if in.ID != nil && *in.ID != "" {
 		if !endpointIDRe.MatchString(*in.ID) {
@@ -278,6 +324,9 @@ func (s *Server) receiveEndpointWebhook(c *gin.Context) {
 	}
 	event.EndpointID = &ep.ID
 	event.Popup, event.Sound = &ep.Popup, &ep.Sound
+	if len(ep.Appearance) > 0 {
+		event.Appearance = ep.Appearance
+	}
 	if err := s.deliver(c, owner, event, d, groupID); err != nil {
 		writeStoreError(c, err)
 		return

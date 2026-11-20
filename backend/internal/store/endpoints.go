@@ -15,14 +15,17 @@ import (
 // en toda la base. Borrado lógico, como el resto de tablas.
 
 const endpointCols = `id, user_id, name, description, secret, enabled, popup, sound, mapping,
-	received_count, last_received_at, created_at, updated_at, repeat, repeat_minutes`
+	received_count, last_received_at, created_at, updated_at, repeat, repeat_minutes, appearance`
 
 func scanEndpoint(row pgx.Row) (models.WebhookEndpoint, error) {
 	var ep models.WebhookEndpoint
 	err := row.Scan(&ep.ID, &ep.UserID, &ep.Name, &ep.Description, &ep.Secret, &ep.Enabled, &ep.Popup, &ep.Sound,
-		&ep.Mapping, &ep.ReceivedCount, &ep.LastReceivedAt, &ep.CreatedAt, &ep.UpdatedAt, &ep.Repeat, &ep.RepeatMinutes)
+		&ep.Mapping, &ep.ReceivedCount, &ep.LastReceivedAt, &ep.CreatedAt, &ep.UpdatedAt, &ep.Repeat, &ep.RepeatMinutes, &ep.Appearance)
 	if ep.Mapping == nil {
 		ep.Mapping = models.FieldMapping{}
+	}
+	if ep.Appearance == nil {
+		ep.Appearance = models.NotificationAppearance{}
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ep, ErrNotFound
@@ -64,11 +67,11 @@ func (s *Store) EndpointByID(ctx context.Context, id string) (models.WebhookEndp
 // CreateEndpoint devuelve ErrConflict si el id ya existe (también si está borrado).
 func (s *Store) CreateEndpoint(ctx context.Context, ep models.WebhookEndpoint) (models.WebhookEndpoint, error) {
 	created, err := scanEndpoint(s.pool.QueryRow(ctx, `INSERT INTO webhook_endpoints
-		(id, user_id, name, description, secret, enabled, popup, sound, mapping, repeat, repeat_minutes)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		(id, user_id, name, description, secret, enabled, popup, sound, mapping, repeat, repeat_minutes, appearance)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING `+endpointCols,
 		ep.ID, ep.UserID, ep.Name, ep.Description, ep.Secret, ep.Enabled, ep.Popup, ep.Sound, ep.Mapping,
-		ep.Repeat, ep.RepeatMinutes))
+		ep.Repeat, ep.RepeatMinutes, ep.Appearance))
 	if isUniqueViolation(err) {
 		return created, ErrConflict
 	}
@@ -79,11 +82,11 @@ func (s *Store) CreateEndpoint(ctx context.Context, ep models.WebhookEndpoint) (
 func (s *Store) UpdateEndpoint(ctx context.Context, ep models.WebhookEndpoint) (models.WebhookEndpoint, error) {
 	return scanEndpoint(s.pool.QueryRow(ctx, `UPDATE webhook_endpoints SET
 			name = $3, description = $4, secret = $5, enabled = $6, popup = $7, sound = $8, mapping = $9,
-			repeat = $10, repeat_minutes = $11, updated_at = now()
+			repeat = $10, repeat_minutes = $11, appearance = $12, updated_at = now()
 		WHERE id = $1 AND user_id = $2 AND status = 'active'
 		RETURNING `+endpointCols,
 		ep.ID, ep.UserID, ep.Name, ep.Description, ep.Secret, ep.Enabled, ep.Popup, ep.Sound, ep.Mapping,
-		ep.Repeat, ep.RepeatMinutes))
+		ep.Repeat, ep.RepeatMinutes, ep.Appearance))
 }
 
 // DeleteEndpoint hace un borrado lógico: su URL deja de aceptar webhooks.

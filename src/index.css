@@ -364,6 +364,8 @@ html.notify-window body::after {
 
 .notify-progress {
   animation-name: notify-countdown;
+  /* Each card sets its own duration (from its connection's design) */
+  animation-duration: var(--notify-duration, 6s);
   animation-timing-function: linear;
   animation-fill-mode: forwards;
 }
@@ -380,6 +382,6 @@ html.notify-window body::after {
   }
   /* The countdown is a timer, not decoration: keep its real duration */
   .notify-progress {
-    animation-duration: 6000ms !important;
+    animation-duration: var(--notify-duration, 6s) !important;
   }
 }

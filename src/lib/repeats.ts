@@ -31,7 +31,7 @@ export function pendingRepeats(events: WebhookEvent[], endpoints: WebhookEndpoin
       everyMs: ep.repeatMinutes * 60_000,
       sinceMs,
       // La configuración actual del endpoint manda (p. ej. si se silenció después)
-      event: { ...event, popup: true, sound: ep.sound },
+      event: { ...event, popup: true, sound: ep.sound, appearance: ep.appearance },
     })
     if (out.length >= MAX_REPEATS) break
   }

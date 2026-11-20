@@ -67,7 +67,14 @@ type WebhookEvent struct {
 	// false desactiva el popup / el sonido; nil = según los ajustes del usuario.
 	Popup *bool `json:"popup,omitempty"`
 	Sound *bool `json:"sound,omitempty"`
+	// Diseño del aviso según su endpoint (tampoco se guarda en el evento).
+	Appearance NotificationAppearance `json:"appearance,omitempty"`
 }
+
+// NotificationAppearance es el diseño de los avisos de un endpoint:
+// {"style": "banner", "color": "#2563eb", "icon": "rocket", "duration": 10, "showMeta": true}.
+// Las claves ausentes toman su valor por defecto en la app.
+type NotificationAppearance map[string]any
 
 // MappedFields son los campos de WebhookEvent que un endpoint puede mapear.
 var MappedFields = []string{"title", "message", "type", "source", "date", "time", "category"}
@@ -87,13 +94,14 @@ type WebhookEndpoint struct {
 	Sound       bool         `json:"sound"`
 	Mapping     FieldMapping `json:"mapping"`
 	// Repeat: el aviso se repite cada RepeatMinutes hasta que se marca como visto (leído).
-	Repeat         bool       `json:"repeat"`
-	RepeatMinutes  int        `json:"repeatMinutes"`
-	ReceivedCount  int        `json:"receivedCount"`
-	LastReceivedAt *time.Time `json:"lastReceivedAt,omitempty"`
-	CreatedAt      time.Time  `json:"createdAt"`
-	UpdatedAt      time.Time  `json:"updatedAt"`
-	UserID         string     `json:"-"`
+	Repeat         bool                   `json:"repeat"`
+	RepeatMinutes  int                    `json:"repeatMinutes"`
+	Appearance     NotificationAppearance `json:"appearance"`
+	ReceivedCount  int                    `json:"receivedCount"`
+	LastReceivedAt *time.Time             `json:"lastReceivedAt,omitempty"`
+	CreatedAt      time.Time              `json:"createdAt"`
+	UpdatedAt      time.Time              `json:"updatedAt"`
+	UserID         string                 `json:"-"`
 }
 
 type CalendarEvent struct {

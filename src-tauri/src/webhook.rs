@@ -123,6 +123,9 @@ pub struct WebhookEvent {
   pub popup: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub sound: Option<bool>,
+  /// Endpoint notification design (style, color, icon, duration…), for the popup.
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub appearance: Option<Value>,
 }
 
 static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -330,6 +333,7 @@ pub fn parse_payload(payload: Value, mapping: Option<&Map<String, Value>>) -> We
     endpoint_id: None,
     popup: None,
     sound: None,
+    appearance: None,
   }
 }
 
@@ -419,6 +423,9 @@ fn handle_endpoint(app: &AppHandle, req: &mut Request, id: &str) -> JsonResponse
       event.endpoint_id = Some(endpoint.id.clone());
       event.popup = Some(endpoint.popup);
       event.sound = Some(endpoint.sound);
+      if !endpoint.appearance.is_empty() {
+        event.appearance = Some(Value::Object(endpoint.appearance.clone()));
+      }
       db::touch_endpoint(&endpoint.id);
       crate::deliver_webhook(app, &event);
       accepted(&event)

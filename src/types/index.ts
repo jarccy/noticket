@@ -19,6 +19,24 @@ export interface WebhookEvent {
   sound?: boolean
   /** En una repetición (aviso aún no visto): cuántas veces se ha mostrado. */
   repeatCount?: number
+  /** Diseño del aviso según su conexión (no se guarda: viaja con el aviso). */
+  appearance?: Partial<NotificationAppearance>
+}
+
+/** Diseños de aviso que se pueden elegir en cada conexión. */
+export type NotificationStyle = 'classic' | 'compact' | 'banner' | 'solid' | 'minimal'
+
+/** Cómo se ve el aviso de una conexión. */
+export interface NotificationAppearance {
+  style: NotificationStyle
+  /** '#rrggbb', o null para usar el color del tipo de aviso (éxito, alerta…). */
+  color: string | null
+  /** Id de un icono de la galería, o null para el icono del tipo de aviso. */
+  icon: string | null
+  /** Segundos en pantalla; 0 = hasta que se cierre. */
+  duration: number
+  /** Mostrar el origen y la hora. */
+  showMeta: boolean
 }
 
 /** Campos del evento que un endpoint puede mapear desde el payload. */
@@ -43,6 +61,8 @@ export interface WebhookEndpoint {
   /** Repetir el aviso cada `repeatMinutes` mientras no se marque como visto. */
   repeat: boolean
   repeatMinutes: number
+  /** Diseño de sus avisos. */
+  appearance: NotificationAppearance
   receivedCount: number
   lastReceivedAt?: string
   createdAt: string

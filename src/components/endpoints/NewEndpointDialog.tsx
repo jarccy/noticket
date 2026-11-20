@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { PRESETS } from '@/components/endpoints/presets'
 import { RepeatSetting } from '@/components/endpoints/RepeatSetting'
 import { validRepeatMinutes } from '@/lib/repeats'
+import { DEFAULT_APPEARANCE } from '@/lib/notification-style'
 import { cn } from '@/lib/utils'
 import type { WebhookEndpoint } from '@/types'
 
@@ -64,6 +65,7 @@ function NewEndpointForm({
         sound: true,
         repeat,
         repeatMinutes: validRepeatMinutes(repeatMinutes) ? repeatMinutes : 15,
+        appearance: DEFAULT_APPEARANCE,
         mapping: preset.mapping,
       })
       onCreated(created, preset.id)

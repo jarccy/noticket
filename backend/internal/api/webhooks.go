@@ -247,7 +247,7 @@ func (s *Server) saveWebhook(c *gin.Context) {
 	e.Date = webhook.ValidDate(e.Date)
 	e.Time = webhook.ValidTime(e.Time)
 	e.GroupID = nil
-	e.Popup, e.Sound = nil, nil
+	e.Popup, e.Sound, e.Appearance = nil, nil, nil
 	// Solo se enlaza un endpoint del propio usuario (p. ej. uno sincronizado desde el modo local)
 	if e.EndpointID != nil {
 		owns, err := s.store.OwnsEndpoint(c.Request.Context(), *e.EndpointID, currentUser(c).ID)

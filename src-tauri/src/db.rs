@@ -15,13 +15,16 @@ use crate::webhook::{iso_now, now_millis};
 
 static DB: OnceLock<Mutex<Connection>> = OnceLock::new();
 
-const SCHEMA_VERSION: i32 = 2;
+const SCHEMA_VERSION: i32 = 3;
 
 /// v2: repeat a notification every N minutes until it is marked as seen.
 const MIGRATION_V2: &str = "
 ALTER TABLE endpoints ADD COLUMN repeat INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE endpoints ADD COLUMN repeat_minutes INTEGER NOT NULL DEFAULT 15;
 ";
+
+/// v3: notification design per endpoint (style, color, icon, duration…), as JSON.
+const MIGRATION_V3: &str = "ALTER TABLE endpoints ADD COLUMN appearance TEXT NOT NULL DEFAULT '{}';";
 
 /// Bounds for the repeat interval, in minutes (same as notiback).
 pub const REPEAT_MIN: i64 = 1;
@@ -78,6 +81,9 @@ pub fn init(path: &std::path::Path) -> Result<(), String> {
     if version < 2 {
       conn.execute_batch(MIGRATION_V2).map_err(|e| e.to_string())?;
     }
+    if version < 3 {
+      conn.execute_batch(MIGRATION_V3).map_err(|e| e.to_string())?;
+    }
     conn
       .execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))
       .map_err(|e| e.to_string())?;
@@ -116,6 +122,9 @@ pub struct Endpoint {
   pub repeat: bool,
   #[serde(default = "default_repeat_minutes")]
   pub repeat_minutes: i64,
+  /// Notification design (the frontend owns its shape and validates it).
+  #[serde(default)]
+  pub appearance: Map<String, Value>,
   #[serde(default)]
   pub received_count: i64,
   #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -130,7 +139,7 @@ fn default_repeat_minutes() -> i64 {
   15
 }
 
-const ENDPOINT_COLS: &str = "id, name, description, secret, enabled, popup, sound, mapping, received_count,    last_received_at, created_at, updated_at, repeat, repeat_minutes";
+const ENDPOINT_COLS: &str = "id, name, description, secret, enabled, popup, sound, mapping, received_count,    last_received_at, created_at, updated_at, repeat, repeat_minutes, appearance";
 
 fn row_endpoint(r: &rusqlite::Row) -> rusqlite::Result<Endpoint> {
   let mapping: String = r.get(7)?;
@@ -149,6 +158,7 @@ fn row_endpoint(r: &rusqlite::Row) -> rusqlite::Result<Endpoint> {
     updated_at: r.get(11)?,
     repeat: r.get(12)?,
     repeat_minutes: r.get(13)?,
+    appearance: serde_json::from_str(&r.get::<_, String>(14)?).unwrap_or_default(),
   })
 }
 
@@ -194,16 +204,21 @@ pub fn db_save_endpoint(endpoint: Endpoint) -> Result<Endpoint, String> {
   }
   let ts = now();
   let mapping = Value::Object(endpoint.mapping.clone()).to_string();
+  let appearance = Value::Object(endpoint.appearance.clone()).to_string();
+  if appearance.len() > 2_000 {
+    return Err("el diseño del aviso es demasiado grande".into());
+  }
   conn()?
     .execute(
       "INSERT INTO endpoints (id, name, description, secret, enabled, popup, sound, mapping, created_at, updated_at,
-         repeat, repeat_minutes)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9, ?10, ?11)
+         repeat, repeat_minutes, appearance)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9, ?10, ?11, ?12)
        ON CONFLICT (id) DO UPDATE SET
          name = excluded.name, description = excluded.description, secret = excluded.secret,
          enabled = excluded.enabled, popup = excluded.popup, sound = excluded.sound,
          mapping = excluded.mapping, updated_at = excluded.updated_at,
-         repeat = excluded.repeat, repeat_minutes = excluded.repeat_minutes",
+         repeat = excluded.repeat, repeat_minutes = excluded.repeat_minutes,
+         appearance = excluded.appearance",
       params![
         endpoint.id,
         name,
@@ -215,7 +230,8 @@ pub fn db_save_endpoint(endpoint: Endpoint) -> Result<Endpoint, String> {
         mapping,
         ts,
         endpoint.repeat,
-        endpoint.repeat_minutes
+        endpoint.repeat_minutes,
+        appearance
       ],
     )
     .map_err(|e| e.to_string())?;
@@ -439,6 +455,7 @@ mod tests {
       mapping: json!({ "title": "pull_request.title" }).as_object().unwrap().clone(),
       repeat: true,
       repeat_minutes: 30,
+      appearance: json!({ "style": "banner", "duration": 0 }).as_object().unwrap().clone(),
       received_count: 0,
       last_received_at: None,
       created_at: String::new(),
@@ -454,6 +471,7 @@ mod tests {
     assert!(!updated.popup);
     assert!(updated.repeat);
     assert_eq!(updated.repeat_minutes, 30);
+    assert_eq!(updated.appearance.get("style").and_then(Value::as_str), Some("banner"));
     assert_eq!(updated.mapping.get("title").and_then(Value::as_str), Some("pull_request.title"));
 
     // Short secrets are rejected

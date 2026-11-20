@@ -197,7 +197,17 @@ export const UsersApi = {
 export type EndpointInput = Partial<
   Pick<
     WebhookEndpoint,
-    'id' | 'name' | 'description' | 'secret' | 'enabled' | 'popup' | 'sound' | 'mapping' | 'repeat' | 'repeatMinutes'
+    | 'id'
+    | 'name'
+    | 'description'
+    | 'secret'
+    | 'enabled'
+    | 'popup'
+    | 'sound'
+    | 'mapping'
+    | 'repeat'
+    | 'repeatMinutes'
+    | 'appearance'
   >
 >
 

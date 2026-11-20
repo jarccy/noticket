@@ -39,6 +39,7 @@ Funciona **sin servidor** (la app de escritorio recibe los webhooks y los guarda
   - **activar / pausar**;
   - **aviso emergente** y **sonido** por separado;
   - **repetir el aviso** cada N minutos hasta marcarlo como visto;
+  - **diseño del aviso**: cinco estilos (Clásico, Compacto, Destacado, Sólido y Minimal), color e icono propios o según el tipo, tiempo en pantalla (de 4 s a «hasta cerrarlo») y mostrar u ocultar el origen y la hora;
   - **mapeo de campos**: qué parte del JSON es el título, el mensaje, el tipo, la fecha… con rutas (`pull_request.title`) o plantillas (`PR #{{number}}: {{pull_request.title}}`) y vista previa en vivo;
   - plantillas de partida (GitHub, Stripe, Agenda).
 - **Detección automática** para payloads sin configurar: `title`, `message`, `type`/`level`/`status`, `date`, `time`, `source`, `category`…
